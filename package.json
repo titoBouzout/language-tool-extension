@@ -1,0 +1,16 @@
+{
+  "name": "langtool-spellcheck",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "verify": "node .claude/skills/verify/smoke.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "puppeteer-core": "^25.3.0"
+  },
+  "private": true
+}

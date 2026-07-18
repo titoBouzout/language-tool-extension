@@ -1,0 +1,207 @@
+/* One stylesheet, injected once via the manifest — nothing is created at
+   runtime. Everything lives under #lt-ext-root so pages are unaffected. */
+
+#lt-ext-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+/* --- underline overlay for <textarea>/<input> --- */
+
+.lt-ext-box {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.lt-ext-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+
+.lt-ext-seg {
+  position: absolute;
+  border-bottom: 2px solid;
+  border-radius: 1px;
+  box-sizing: border-box;
+}
+
+.lt-ext-seg.lt-sev-spell   { border-color: #ff6259; background: rgba(255, 98, 89, 0.10); }
+.lt-ext-seg.lt-sev-grammar { border-color: #fbbc04; background: rgba(251, 188, 4, 0.10); }
+.lt-ext-seg.lt-sev-style   { border-color: #6aa9ff; background: rgba(106, 169, 255, 0.10); }
+
+/* --- contenteditable highlights (values mirrored in content/ce.js for
+       shadow roots) --- */
+
+::highlight(lt-ext-spell) {
+  text-decoration: underline wavy #ff6259 1.5px;
+  text-decoration-skip-ink: none;
+  background-color: rgba(255, 98, 89, 0.10);
+}
+::highlight(lt-ext-grammar) {
+  text-decoration: underline wavy #fbbc04 1.5px;
+  text-decoration-skip-ink: none;
+  background-color: rgba(251, 188, 4, 0.10);
+}
+::highlight(lt-ext-style) {
+  text-decoration: underline wavy #6aa9ff 1.5px;
+  text-decoration-skip-ink: none;
+  background-color: rgba(106, 169, 255, 0.10);
+}
+
+/* --- hidden measuring mirror --- */
+
+.lt-ext-mirror {
+  position: absolute;
+  top: -100000px;
+  left: -100000px;
+  visibility: hidden;
+  pointer-events: none;
+  min-height: 0;
+}
+
+/* --- suggestion popup (dark only) --- */
+
+.lt-ext-popup {
+  position: fixed;
+  pointer-events: auto;
+  z-index: 2147483647;
+  background: #202124;
+  border: 1px solid #3c4043;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  min-width: 200px;
+  max-width: 360px;
+  padding: 4px 0;
+  color: #e8eaed;
+  font: 13px/1.45 system-ui, sans-serif;
+  text-align: start;
+  color-scheme: dark;
+}
+
+.lt-ext-pop-short {
+  padding: 8px 14px 0;
+  font-weight: 600;
+}
+
+.lt-ext-pop-msg {
+  padding: 6px 14px 8px;
+  color: #bdc1c6;
+}
+
+.lt-ext-pop-short + .lt-ext-pop-msg {
+  padding-top: 2px;
+  font-size: 12px;
+  color: #9aa0a6;
+}
+
+.lt-ext-pop-sug {
+  max-height: 190px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 2px 0;
+  border-top: 1px solid #3c4043;
+}
+
+.lt-ext-pop-item {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 6px 14px;
+  background: none;
+  border: 0;
+  color: #e8eaed;
+  cursor: pointer;
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.lt-ext-pop-item:hover {
+  background: #3c4043;
+}
+
+.lt-ext-pop-item.lt-ext-ws {
+  color: #9aa0a6;
+  font-style: italic;
+}
+
+.lt-ext-pop-rule {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-size: 11px;
+  color: #9aa0a6;
+  border-top: 1px solid #3c4043;
+}
+
+.lt-ext-pop-rule-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.lt-ext-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.lt-ext-dot.lt-sev-spell   { background: #ff6259; }
+.lt-ext-dot.lt-sev-grammar { background: #fbbc04; }
+.lt-ext-dot.lt-sev-style   { background: #6aa9ff; }
+
+.lt-ext-pop-link {
+  flex: none;
+  color: #8ab4f8;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.lt-ext-pop-link:hover {
+  text-decoration: underline;
+}
+
+.lt-ext-pop-lang {
+  padding: 0 14px 6px;
+  font-size: 11px;
+  color: #9aa0a6;
+}
+
+.lt-ext-pop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  padding: 4px 8px 6px;
+}
+
+.lt-ext-pop-act {
+  flex: none;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 7px;
+  color: #8ab4f8;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.lt-ext-pop-act:hover {
+  background: #3c4043;
+}
+
+.lt-ext-pop-note {
+  padding: 4px 7px;
+  font-size: 11px;
+  font-style: italic;
+  color: #9aa0a6;
+}

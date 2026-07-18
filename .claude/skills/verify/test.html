@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>LT verify page</title>
+<style>
+  body { font: 16px sans-serif; padding: 40px; }
+  textarea { width: 400px; height: 120px; font: 15px/1.5 monospace; padding: 10px; }
+  input { width: 400px; font: 15px sans-serif; padding: 8px; }
+  #ce { border: 1px solid #888; padding: 10px; width: 400px; min-height: 60px; }
+  .spacer { height: 800px; }
+</style>
+<h1>Verify page</h1>
+<p>textarea:</p>
+<textarea id="ta"></textarea>
+<p>input[type=text]:</p>
+<input id="inp" type="text">
+<p>contenteditable:</p>
+<div id="ce" contenteditable="true"><p>First paragraph.</p></div>
+<p>contenteditable with pre-filled text and inter-block source whitespace:</p>
+<div id="ce2" contenteditable="true">
+  <p>One sentence here.</p>
+  <p>This is Twoo much.</p>
+</div>
+<p>spellcheck=false textarea (must be skipped):</p>
+<textarea id="nospell" spellcheck="false"></textarea>
+<div class="spacer"></div>

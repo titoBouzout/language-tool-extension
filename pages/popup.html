@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="dark">
+  <title>LanguageTool Spellcheck</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>LanguageTool</h1>
+    <span id="status" class="dot" title="Checking server…"></span>
+  </header>
+
+  <main>
+    <label class="field">
+      <span>Server URL</span>
+      <input id="server" type="text" placeholder="http://localhost:8010" spellcheck="false" autocomplete="off">
+    </label>
+
+    <label class="field">
+      <span>Language</span>
+      <select id="language"></select>
+    </label>
+
+    <section>
+      <h2>Ignored words</h2>
+      <div id="words" class="chips"></div>
+      <input id="add-word" type="text" placeholder="Add word and press Enter" spellcheck="false" autocomplete="off">
+    </section>
+
+    <section>
+      <h2>Disabled rules</h2>
+      <ul id="rules" class="rules"></ul>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
