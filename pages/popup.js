@@ -141,17 +141,6 @@ $('language').addEventListener('change', () => {
   chrome.storage.sync.set({ language: $('language').value });
 });
 
-$('add-word').addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter') return;
-  const word = $('add-word').value.trim();
-  if (!word) return;
-  const lc = word.toLowerCase();
-  if (!settings.ignoredWords.some(w => w.toLowerCase() === lc)) {
-    chrome.storage.sync.set({ ignoredWords: [...settings.ignoredWords, word] });
-  }
-  $('add-word').value = '';
-});
-
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
   let langOrServer = false;

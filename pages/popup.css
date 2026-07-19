@@ -87,6 +87,9 @@ section {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .chips:empty::before,
@@ -95,6 +98,10 @@ section {
   font-size: 12px;
   font-style: italic;
   color: #5f6368;
+}
+
+.chips:empty::before {
+  content: 'None yet — click an underlined word and choose Ignore';
 }
 
 .chip {
