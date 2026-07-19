@@ -285,6 +285,31 @@ await step('contenteditable: pre-filled text checked on focus, source whitespace
   return `ranges: ${JSON.stringify(ranges)}`;
 });
 
+await step('contenteditable: highlights survive a silent re-render + net-zero edit', async () => {
+  // A framework re-rendering identical text replaces the text nodes the
+  // highlight ranges point at, with no input event. A following edit that
+  // nets out to no text change (type + backspace) used to hit runCheck's
+  // "unchanged" early-return and never repaint.
+  await page.evaluate(() => {
+    for (const p of document.querySelectorAll('#ce2 p')) p.textContent = p.textContent;
+  });
+  await page.click('#ce2');
+  await page.keyboard.press('End');
+  await page.type('#ce2', 'x');
+  await page.keyboard.press('Backspace');
+  await page.waitForFunction(() => {
+    for (const k of ['lt-ext-spell', 'lt-ext-grammar', 'lt-ext-style']) {
+      for (const r of CSS.highlights.get(k) || []) {
+        if (r.startContainer.isConnected &&
+            document.getElementById('ce2').contains(r.startContainer) &&
+            r.toString().includes('Twoo')) return true;
+      }
+    }
+    return false;
+  }, { timeout: 8000 });
+  return 'highlight re-anchored to live nodes';
+});
+
 await step('controlled editor (Slate-like, Discord): correction survives further edits', async () => {
   await page.click('#ce3');
   await sleep(1500); // initial check on focus
@@ -331,6 +356,26 @@ await step('probe: spellcheck=false textarea is skipped', async () => {
   await sleep(1500);
   const after = await boxCount();
   if (after !== before) throw new Error(`overlay was attached (${before} -> ${after})`);
+});
+
+await step('probe: field edited via synthetic input events is checked without focus', async () => {
+  await page.evaluate(() => {
+    const i = document.getElementById('mirror');
+    i.value = 'A worng mirrored word.';
+    i.dispatchEvent(new InputEvent('input', {
+      bubbles: true, composed: true, inputType: 'insertText', data: '.',
+    }));
+  });
+  await page.waitForFunction(() => {
+    const r = document.getElementById('mirror').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  const active = await page.evaluate(() => document.activeElement.id || document.activeElement.tagName);
+  if (active === 'mirror') throw new Error('field unexpectedly gained focus');
+  return `underlined while focus is on ${active}`;
 });
 
 await step('probe: overlay stays aligned after page scroll', async () => {
@@ -380,13 +425,14 @@ await step('prefs popup: languages load from server, ignored word listed', async
   }));
   if (!info.status.includes('ok')) throw new Error(`status: ${info.status}`);
   if (!info.chips.includes('mispeled')) throw new Error(`chips: ${JSON.stringify(info.chips)}`);
-  await prefs.type('#add-word', 'foobarbaz');
-  await prefs.keyboard.press('Enter');
+  // No manual add input anymore — words are only added via the page popup's
+  // Ignore action. Removing via the chip's × must still work.
+  await prefs.click('.chip .remove');
   await sleep(400);
   const chips = await prefs.$$eval('.chip', els => els.map(c => c.textContent.replace('×', '').trim()));
-  if (!chips.includes('foobarbaz')) throw new Error(`add failed: ${JSON.stringify(chips)}`);
+  if (chips.includes('mispeled')) throw new Error(`remove failed: ${JSON.stringify(chips)}`);
   await prefs.screenshot({ path: path.join(SHOTS, '06-prefs.png') });
-  return `${info.langs} languages, server=${info.server}, chips=${chips.join('/')}`;
+  return `${info.langs} languages, server=${info.server}, chip removal ok`;
 });
 
 await browser.close();

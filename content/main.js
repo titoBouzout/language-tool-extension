@@ -1,6 +1,8 @@
 // Orchestration. No MutationObserver, no page-wide scanning: an element is
-// attached the first time it receives focus (document-level focusin), checks
-// are debounced off its own input events, and only the handful of
+// attached the first time it receives focus (document-level focusin) or
+// dispatches an input event (document-level capture — catches fields a
+// framework edits without focusing, and elements focused before injection);
+// checks are debounced off its own input events, and only the handful of
 // most-recently-edited elements keep live state.
 'use strict';
 
@@ -56,7 +58,7 @@
       rects: [],      // field: per-match content-coordinate rects
       ceRanges: [],   // ce: [{range, sev}] currently registered
       map: null,      // ce: text/node map the matches refer to
-      seq: 0, timer: 0, lastChecked: null, detectedLanguage: null,
+      seq: 0, timer: 0, retryMs: 0, lastChecked: null, detectedLanguage: null,
       raf: 0, scrollRaf: 0, ro: null,
     };
     s.onInput = (e) => onInput(s, e);
@@ -123,7 +125,15 @@
   async function runCheck(s) {
     if (!s.el.isConnected) { dispose(s); return; }
     const { text, map } = textOf(s);
-    if (text === s.lastChecked) return;
+    if (text === s.lastChecked) {
+      // The events that led here may net out to no text change (undo, a
+      // framework re-render with identical text) — but they already hid the
+      // field overlay (onInput clears it) or replaced the CE text nodes the
+      // highlight ranges point at. Repaint instead of bailing.
+      s.map = map;
+      applyMatches(s);
+      return;
+    }
 
     const seq = ++s.seq;
     if (!text.trim()) {
@@ -141,13 +151,17 @@
       resp = await LT.checkText(clipped ? text.slice(-MAX_TEXT) : text);
     } catch {
       if (seq !== s.seq) return;
-      // Server unreachable: clear stale marks, retry on the next input.
+      // Server unreachable: clear stale marks and retry with backoff, so
+      // highlights come back without requiring another keystroke.
       s.lastChecked = null;
       s.raw = [];
       applyMatches(s);
+      s.retryMs = Math.min((s.retryMs || 1000) * 2, 16000);
+      scheduleCheck(s, s.retryMs);
       return;
     }
     if (seq !== s.seq) return;
+    s.retryMs = 0;
 
     const shift = clipped ? text.length - MAX_TEXT : 0;
     s.lastChecked = text;
@@ -176,9 +190,20 @@
     if (s.kind === 'field') {
       LT.fieldOverlay.render(s, s.lastChecked ?? '');
     } else {
+      // s.map was built before the server round-trip; a framework re-render
+      // during the await (Slate/Discord re-parse) leaves its nodes detached
+      // and the highlights invisible. Re-anchor against the live DOM.
+      const map = LT.ceBuildMap(s.el);
+      if (s.lastChecked != null && map.text !== s.lastChecked) {
+        // Text changed under us with no input event — the matches don't
+        // apply anymore; get a fresh check instead of painting garbage.
+        scheduleCheck(s, DEBOUNCE_MS);
+        return;
+      }
+      s.map = map;
       const items = [];
       for (const m of s.matches) {
-        const range = s.map && LT.ceRangeFor(s.map, m.offset, m.offset + m.length);
+        const range = LT.ceRangeFor(map, m.offset, m.offset + m.length);
         if (range) items.push({ range, sev: LT.severity(m) });
       }
       LT.ceApply(s, items);
@@ -246,7 +271,12 @@
     }
 
     const map = LT.ceBuildMap(s.el);
-    if (map.text !== s.lastChecked) return; // stale — recheck is pending
+    if (map.text !== s.lastChecked) {
+      // Stale, and if the change came from a silent framework re-render no
+      // input event ever scheduled the recheck — do it here.
+      scheduleCheck(s, FOCUS_CHECK_MS);
+      return;
+    }
     const pos = LT.cePosFromPoint(s.el, map, e.clientX, e.clientY);
     if (pos < 0) return;
     const m = s.matches.find(mm => pos >= mm.offset && pos <= mm.offset + mm.length);
@@ -269,8 +299,25 @@
     considerTarget(e.composedPath ? e.composedPath()[0] : e.target);
   }, true);
 
-  if (document.activeElement && document.activeElement !== document.body) {
-    considerTarget(document.activeElement);
+  // Input events are a discovery signal too: mirror/autofill patterns edit
+  // fields that never get focus, and an element focused before injection
+  // never produced a focusin we could see. Also LRU-bumps the element being
+  // edited so active fields aren't evicted while in use.
+  document.addEventListener('input', (e) => {
+    const el = editableRoot(e.composedPath ? e.composedPath()[0] : e.target);
+    if (!el) return;
+    const known = states.has(el);
+    const s = attach(el);
+    // Newly attached: its own listener may also see this event; the shared
+    // timer makes the double onInput harmless.
+    if (s && !known) onInput(s, e);
+  }, true);
+
+  {
+    // Descend through shadow roots: activeElement stops at the host.
+    let ae = document.activeElement;
+    while (ae?.shadowRoot?.activeElement) ae = ae.shadowRoot.activeElement;
+    if (ae && ae !== document.body) considerTarget(ae);
   }
 
   document.addEventListener('scroll', () => {

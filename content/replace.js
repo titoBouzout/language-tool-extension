@@ -30,6 +30,10 @@ LT.applyReplacement = function (s, match, value) {
         bubbles: true, composed: true, inputType: 'insertText', data: value,
       }));
     }
+    // execCommand can report success without an input event ever firing
+    // (a page handler canceling the trusted beforeinput) — make sure the
+    // recheck is scheduled regardless; the shared timer dedupes.
+    LT.afterEdit?.(s);
     return;
   }
 
