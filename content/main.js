@@ -325,10 +325,37 @@
   }, { capture: true, passive: true });
 
   // Clicks that toggle layout (accordions, tabs) move fields without any
-  // scroll event; bubble phase runs after the page's own handlers.
+  // scroll event; bubble phase runs after the page's own handlers. A click
+  // can also be a Send button clearing the field programmatically (no input
+  // event) — after a beat, cheaply compare field values and treat any
+  // change as input so stale overlays go away.
+  let revalidateTimer = 0;
+  function revalidateFieldsSoon() {
+    clearTimeout(revalidateTimer);
+    revalidateTimer = setTimeout(() => {
+      for (const s of states.values()) {
+        if (s.kind === 'field' && s.lastChecked != null &&
+            s.el.isConnected && s.el.value !== s.lastChecked) {
+          onInput(s);
+        }
+      }
+    }, FOCUS_CHECK_MS);
+  }
   document.addEventListener('click', () => {
-    if (states.size) repositionAll();
+    if (!states.size) return;
+    repositionAll();
+    revalidateFieldsSoon();
   });
+
+  // Chat apps consume Enter to send, then clear the input programmatically —
+  // again no input event. Revalidate the element shortly after; if Enter
+  // just typed a newline, the resulting input event re-debounces normally.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !states.size) return;
+    const el = editableRoot(e.composedPath ? e.composedPath()[0] : e.target);
+    const s = el && states.get(el);
+    if (s) scheduleCheck(s, FOCUS_CHECK_MS);
+  }, true);
 
   window.addEventListener('resize', () => {
     LT.closePopup();

@@ -378,6 +378,36 @@ await step('probe: field edited via synthetic input events is checked without fo
   return `underlined while focus is on ${active}`;
 });
 
+await step('probe: chat-style send clears stale underlines (Enter and Send click)', async () => {
+  const underlined = () => page.waitForFunction(() => {
+    const r = document.getElementById('chat').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  const clean = () => page.waitForFunction(() => {
+    const chat = document.getElementById('chat');
+    const r = chat.getBoundingClientRect();
+    return chat.value === '' && ![...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 3000 });
+
+  await page.click('#chat');
+  await page.type('#chat', 'Sending a worng message.');
+  await underlined();
+  await page.keyboard.press('Enter'); // app consumes it, clears async
+  await clean();
+
+  await page.type('#chat', 'Anothr message.');
+  await underlined();
+  await page.click('#chat-send'); // app clears async, no input event
+  await clean();
+  return 'underlines removed after both send flows';
+});
+
 await step('probe: overlay stays aligned after page scroll', async () => {
   await page.mouse.wheel({ deltaY: 300 });
   await sleep(400);

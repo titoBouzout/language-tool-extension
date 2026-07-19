@@ -24,6 +24,20 @@
 <textarea id="nospell" spellcheck="false"></textarea>
 <p>never-focused mirror input (page dispatches synthetic input events):</p>
 <input id="mirror" type="text">
+<p>chat-style input (Enter or Send clears it programmatically, no input event):</p>
+<textarea id="chat"></textarea>
+<button id="chat-send" type="button">Send</button>
+<script>
+(function () {
+  const chat = document.getElementById('chat');
+  // Simulate an app that sends async and then clears the draft.
+  const send = () => setTimeout(() => { chat.value = ''; }, 30);
+  chat.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  document.getElementById('chat-send').addEventListener('click', send);
+})();
+</script>
 <p>Slate-like controlled editor (model owns the DOM, Discord-style):</p>
 <div id="ce3" contenteditable="true"></div>
 <script>
