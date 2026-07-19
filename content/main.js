@@ -290,6 +290,12 @@
     }
   });
 
+  // Called by replace.js after applying a suggestion, because a framework
+  // that consumes the synthetic beforeinput produces no native input event.
+  // Redundant with the input listener on the other paths — the shared timer
+  // dedupes.
+  LT.afterEdit = (s) => onInput(s);
+
   LT.onSettingsChanged.push((keys) => {
     if (keys.includes('serverUrl') || keys.includes('language')) {
       for (const s of states.values()) {

@@ -285,6 +285,43 @@ await step('contenteditable: pre-filled text checked on focus, source whitespace
   return `ranges: ${JSON.stringify(ranges)}`;
 });
 
+await step('controlled editor (Slate-like, Discord): correction survives further edits', async () => {
+  await page.click('#ce3');
+  await sleep(1500); // initial check on focus
+  const pt = await page.evaluate(() => {
+    const t = document.querySelector('#ce3 p').firstChild;
+    const i = t.data.indexOf('worng');
+    if (i < 0) return null;
+    const r = document.createRange();
+    r.setStart(t, i); r.setEnd(t, i + 5);
+    const b = r.getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  });
+  if (!pt) throw new Error('word not found in editor');
+  await page.mouse.click(pt.x, pt.y);
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  const labels = await page.$$eval('.lt-ext-pop-item', els => els.map(e => e.textContent));
+  const pick = labels.find(l => /^wrong$/i.test(l)) || labels[0];
+  await clickSuggestion(pick);
+  await sleep(300);
+  const model = await page.evaluate(() => window.__ce3model());
+  if (model.includes('worng')) throw new Error('editor model not updated: ' + model);
+  // The Discord repro: keep typing after the correction — a model that never
+  // heard about the edit re-renders and reverts it here.
+  await page.click('#ce3');
+  await page.keyboard.press('End');
+  await page.type('#ce3', ' More.');
+  await sleep(300);
+  const final = await page.evaluate(() => ({
+    model: window.__ce3model(),
+    dom: document.getElementById('ce3').textContent,
+  }));
+  if (final.dom.includes('worng')) throw new Error('REVERTED: ' + JSON.stringify(final));
+  if (!final.dom.includes('More.')) throw new Error('typing lost: ' + JSON.stringify(final));
+  if (final.dom !== final.model) throw new Error('model/DOM drift: ' + JSON.stringify(final));
+  return `dom: ${JSON.stringify(final.dom)}`;
+});
+
 // --- probes ---
 
 await step('probe: spellcheck=false textarea is skipped', async () => {

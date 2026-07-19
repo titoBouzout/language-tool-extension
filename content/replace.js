@@ -45,6 +45,38 @@ LT.applyReplacement = function (s, match, value) {
   el.focus();
   sel.removeAllRanges();
   sel.addRange(range);
+  // Selection-tracking frameworks sync their model selection on
+  // selectionchange; the browser's own event fires too late (async).
+  document.dispatchEvent(new Event('selectionchange'));
+
+  // Controlled editors (Slate — Discord, Lexical, Draft) keep their own
+  // model and re-render the DOM from it: an edit they never heard about is
+  // reverted on the next keystroke. execCommand does NOT fire beforeinput —
+  // the one event those editors accept changes through — so announce the
+  // edit first with a synthetic beforeinput carrying the exact target
+  // range. A framework that owns the field preventDefaults it and applies
+  // the change to its model itself; then there is nothing left for us to do.
+  const staticRange = new StaticRange({
+    startContainer: range.startContainer,
+    startOffset: range.startOffset,
+    endContainer: range.endContainer,
+    endOffset: range.endOffset,
+  });
+  const announce = new InputEvent('beforeinput', {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    inputType: value === '' ? 'deleteContentBackward' : 'insertText',
+    data: value === '' ? null : value,
+  });
+  Object.defineProperty(announce, 'getTargetRanges', { value: () => [staticRange] });
+  if (!el.dispatchEvent(announce)) {
+    // Canceled: the page's editor consumed the edit. No native input event
+    // will fire, so tell the checker directly.
+    LT.afterEdit?.(s);
+    return;
+  }
+
   let ok = false;
   try {
     ok = document.execCommand(value === '' ? 'delete' : 'insertText', false, value);
@@ -60,4 +92,5 @@ LT.applyReplacement = function (s, match, value) {
       bubbles: true, composed: true, inputType: 'insertText', data: value,
     }));
   }
+  LT.afterEdit?.(s);
 };

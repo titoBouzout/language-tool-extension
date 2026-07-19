@@ -22,4 +22,67 @@
 </div>
 <p>spellcheck=false textarea (must be skipped):</p>
 <textarea id="nospell" spellcheck="false"></textarea>
+<p>Slate-like controlled editor (model owns the DOM, Discord-style):</p>
+<div id="ce3" contenteditable="true"></div>
+<script>
+// Minimal controlled editor mimicking Slate/Discord: a JS model is the
+// source of truth, changes are accepted ONLY via beforeinput, and any DOM
+// drift (e.g. an execCommand edit the model never heard about) is reverted
+// by re-rendering on input.
+(function () {
+  const el = document.getElementById('ce3');
+  let model = 'A worng word.';
+  function textNode() {
+    const p = el.querySelector('p');
+    return p && p.firstChild;
+  }
+  function render(caret) {
+    el.textContent = '';
+    const p = document.createElement('p');
+    p.textContent = model;
+    el.appendChild(p);
+    if (caret != null && p.firstChild) {
+      const s = window.getSelection();
+      const r = document.createRange();
+      r.setStart(p.firstChild, Math.min(caret, model.length));
+      r.collapse(true);
+      s.removeAllRanges();
+      s.addRange(r);
+    }
+  }
+  function toOffset(node, off) {
+    const t = textNode();
+    if (!t) return 0;
+    if (node === t) return Math.min(off, model.length);
+    if (node && node.nodeType === 1) return off === 0 ? 0 : model.length;
+    return 0;
+  }
+  el.addEventListener('beforeinput', (e) => {
+    e.preventDefault();
+    let start, end;
+    const tr = e.getTargetRanges();
+    if (tr.length) {
+      start = toOffset(tr[0].startContainer, tr[0].startOffset);
+      end = toOffset(tr[0].endContainer, tr[0].endOffset);
+    } else {
+      const s = window.getSelection();
+      start = toOffset(s.anchorNode, s.anchorOffset);
+      end = toOffset(s.focusNode, s.focusOffset);
+    }
+    if (start > end) [start, end] = [end, start];
+    if (e.inputType === 'insertText') {
+      const d = e.data || '';
+      model = model.slice(0, start) + d + model.slice(end);
+      render(start + d.length);
+    } else if (e.inputType.startsWith('delete')) {
+      if (start === end) start = Math.max(0, start - 1);
+      model = model.slice(0, start) + model.slice(end);
+      render(start);
+    }
+  });
+  el.addEventListener('input', () => render());
+  render();
+  window.__ce3model = () => model;
+})();
+</script>
 <div class="spacer"></div>
