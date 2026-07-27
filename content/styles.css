@@ -38,24 +38,10 @@
 .lt-ext-seg.lt-sev-grammar { border-color: #fbbc04; background: rgba(251, 188, 4, 0.10); }
 .lt-ext-seg.lt-sev-style   { border-color: #6aa9ff; background: rgba(106, 169, 255, 0.10); }
 
-/* --- contenteditable highlights (values mirrored in content/ce.js for
-       shadow roots) --- */
-
-::highlight(lt-ext-spell) {
-  text-decoration: underline wavy #ff6259 1.5px;
-  text-decoration-skip-ink: none;
-  background-color: rgba(255, 98, 89, 0.10);
-}
-::highlight(lt-ext-grammar) {
-  text-decoration: underline wavy #fbbc04 1.5px;
-  text-decoration-skip-ink: none;
-  background-color: rgba(251, 188, 4, 0.10);
-}
-::highlight(lt-ext-style) {
-  text-decoration: underline wavy #6aa9ff 1.5px;
-  text-decoration-skip-ink: none;
-  background-color: rgba(106, 169, 255, 0.10);
-}
+/* contenteditable highlights are not here: ::highlight() rules have to be
+   duplicated into every shadow root that holds an editable, so content/ce.js
+   owns them as one constructed stylesheet and adopts it into the document and
+   into shadow roots alike. */
 
 /* --- hidden measuring mirror --- */
 
@@ -204,4 +190,10 @@
   font-size: 11px;
   font-style: italic;
   color: #9aa0a6;
+}
+
+.lt-ext-pop-error {
+  padding: 4px 14px 8px;
+  font-size: 11px;
+  color: #f28b82;
 }

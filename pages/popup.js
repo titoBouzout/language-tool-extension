@@ -1,12 +1,23 @@
-// Preferences popup logic. Settings persist in chrome.storage.sync; content
-// scripts pick changes up live via their own onChanged listener.
+// Preferences popup logic. Settings persist in chrome.storage (sync for
+// preferences, local for the per-field opt-outs, which grow without bound and
+// would blow sync's per-item quota); content scripts pick changes up live via
+// their own onChanged listener.
 'use strict';
 
-const DEFAULTS = {
+const SYNC_DEFAULTS = {
   serverUrl: 'http://localhost:8010',
   language: 'auto',
+  preferredVariants: [],
+  motherTongue: '',
+  level: 'default',
+  enabled: true,
+  disabledSites: [],
   disabledRules: [],
   ignoredWords: [],
+};
+
+const LOCAL_DEFAULTS = {
+  disabledFields: {},
 };
 
 // Shown when the server can't be reached to list its languages.
@@ -28,12 +39,27 @@ const FALLBACK_LANGS = [
 ];
 
 const $ = (id) => document.getElementById(id);
-const settings = { ...DEFAULTS };
+const settings = { ...SYNC_DEFAULTS, ...LOCAL_DEFAULTS };
+let siteHost = '';
 
 function normalizeServer(url) {
-  let u = String(url || DEFAULTS.serverUrl).trim();
+  let u = String(url || SYNC_DEFAULTS.serverUrl).trim();
   u = u.replace(/\/+$/, '').replace(/\/v2(\/check|\/languages)?$/, '');
-  return u || DEFAULTS.serverUrl;
+  return u || SYNC_DEFAULTS.serverUrl;
+}
+
+// sync caps each item at 8KB and rate-limits writes; both lists here grow by
+// user action, so a save really can fail. Say so instead of looking saved.
+async function save(area, items) {
+  try {
+    await chrome.storage[area].set(items);
+    $('error').hidden = true;
+    return true;
+  } catch (err) {
+    $('error').textContent = (err && err.message) || 'Could not save';
+    $('error').hidden = false;
+    return false;
+  }
 }
 
 function setStatus(kind, title) {
@@ -42,30 +68,69 @@ function setStatus(kind, title) {
   dot.title = title;
 }
 
+function option(value, label) {
+  const o = document.createElement('option');
+  o.value = value;
+  o.textContent = label;
+  return o;
+}
+
+const byName = (a, b) => a.name.localeCompare(b.name);
+
 function renderLanguages(langs) {
+  const sorted = [...langs].filter(l => l.longCode && l.name).sort(byName);
+
   const sel = $('language');
   sel.textContent = '';
-  const auto = document.createElement('option');
-  auto.value = 'auto';
-  auto.textContent = 'Auto-detect';
-  sel.appendChild(auto);
+  sel.appendChild(option('auto', 'Auto-detect'));
   const seen = new Set(['auto']);
-  for (const l of [...langs].sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!l.longCode || seen.has(l.longCode)) continue;
+  for (const l of sorted) {
+    if (seen.has(l.longCode)) continue;
     seen.add(l.longCode);
-    const o = document.createElement('option');
-    o.value = l.longCode;
-    o.textContent = l.name + ' (' + l.longCode + ')';
-    sel.appendChild(o);
+    sel.appendChild(option(l.longCode, l.name + ' (' + l.longCode + ')'));
   }
   // Keep the saved value selectable even if the server list lacks it.
-  if (!seen.has(settings.language)) {
-    const o = document.createElement('option');
-    o.value = settings.language;
-    o.textContent = settings.language;
-    sel.appendChild(o);
-  }
+  if (!seen.has(settings.language)) sel.appendChild(option(settings.language, settings.language));
   sel.value = settings.language;
+
+  // Variants only: a preferredVariants entry must name a specific dialect.
+  // Chosen ones float to the top — the list is ~50 long and the box shows
+  // four, so otherwise the current selection is usually scrolled out of view.
+  const variants = $('variants');
+  variants.textContent = '';
+  const seenVar = new Set();
+  const dialects = sorted.filter(l => {
+    if (!l.longCode.includes('-') || seenVar.has(l.longCode)) return false;
+    seenVar.add(l.longCode);
+    return true;
+  });
+  const chosen = (l) => settings.preferredVariants.includes(l.longCode);
+  for (const l of [...dialects.filter(chosen), ...dialects.filter(l => !chosen(l))]) {
+    const o = option(l.longCode, l.name + ' (' + l.longCode + ')');
+    o.selected = chosen(l);
+    variants.appendChild(o);
+  }
+
+  const mother = $('mother');
+  mother.textContent = '';
+  mother.appendChild(option('', 'Not set'));
+  const seenMother = new Set(['']);
+  for (const l of sorted) {
+    if (seenMother.has(l.longCode)) continue;
+    seenMother.add(l.longCode);
+    mother.appendChild(option(l.longCode, l.name + ' (' + l.longCode + ')'));
+  }
+  if (!seenMother.has(settings.motherTongue)) {
+    mother.appendChild(option(settings.motherTongue, settings.motherTongue));
+  }
+  mother.value = settings.motherTongue;
+
+  syncVariantsVisibility();
+}
+
+// preferredVariants is only honoured by the server alongside language=auto.
+function syncVariantsVisibility() {
+  $('variants-row').hidden = settings.language !== 'auto';
 }
 
 async function loadLanguages() {
@@ -81,6 +146,16 @@ async function loadLanguages() {
   }
 }
 
+function removeButton(title, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'remove';
+  b.textContent = '×';
+  b.title = title;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
 function renderWords() {
   const box = $('words');
   box.textContent = '';
@@ -88,15 +163,9 @@ function renderWords() {
     const chip = document.createElement('span');
     chip.className = 'chip';
     chip.appendChild(document.createTextNode(word));
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'remove';
-    rm.textContent = '×';
-    rm.title = 'Stop ignoring';
-    rm.addEventListener('click', () => {
-      chrome.storage.sync.set({ ignoredWords: settings.ignoredWords.filter(w => w !== word) });
-    });
-    chip.appendChild(rm);
+    chip.appendChild(removeButton('Stop ignoring', () => {
+      save('sync', { ignoredWords: settings.ignoredWords.filter(w => w !== word) });
+    }));
     box.appendChild(chip);
   }
 }
@@ -109,23 +178,50 @@ function renderRules() {
     const span = document.createElement('span');
     span.textContent = rule;
     li.appendChild(span);
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'remove';
-    rm.textContent = '×';
-    rm.title = 'Re-enable rule';
-    rm.addEventListener('click', () => {
-      chrome.storage.sync.set({ disabledRules: settings.disabledRules.filter(r => r !== rule) });
-    });
-    li.appendChild(rm);
+    li.appendChild(removeButton('Re-enable rule', () => {
+      save('sync', { disabledRules: settings.disabledRules.filter(r => r !== rule) });
+    }));
     list.appendChild(li);
   }
 }
 
+function renderFields() {
+  const list = $('fields');
+  list.textContent = '';
+  for (const [host, keys] of Object.entries(settings.disabledFields)) {
+    for (const key of keys) {
+      const li = document.createElement('li');
+      const span = document.createElement('span');
+      span.textContent = host + ' — ' + key;
+      li.appendChild(span);
+      li.appendChild(removeButton('Check this field again', () => {
+        const left = keys.filter(k => k !== key);
+        const next = { ...settings.disabledFields };
+        if (left.length) next[host] = left; else delete next[host];
+        save('local', { disabledFields: next });
+      }));
+      list.appendChild(li);
+    }
+  }
+}
+
+function renderToggles() {
+  $('enabled').checked = settings.enabled;
+  $('picky').checked = settings.level === 'picky';
+  if (siteHost) {
+    $('site-row').hidden = false;
+    $('site-host').textContent = siteHost;
+    $('site').checked = settings.disabledSites.includes(siteHost);
+  }
+  document.body.classList.toggle('off', !settings.enabled);
+}
+
+// --- inputs ---
+
 let serverTimer = 0;
 function saveServer() {
   const url = normalizeServer($('server').value);
-  if (url !== settings.serverUrl) chrome.storage.sync.set({ serverUrl: url });
+  if (url !== settings.serverUrl) save('sync', { serverUrl: url });
 }
 $('server').addEventListener('input', () => {
   clearTimeout(serverTimer);
@@ -138,30 +234,81 @@ $('server').addEventListener('change', () => {
 });
 
 $('language').addEventListener('change', () => {
-  chrome.storage.sync.set({ language: $('language').value });
+  save('sync', { language: $('language').value });
+});
+
+$('variants').addEventListener('change', () => {
+  save('sync', {
+    preferredVariants: [...$('variants').selectedOptions].map(o => o.value),
+  });
+});
+
+$('mother').addEventListener('change', () => {
+  save('sync', { motherTongue: $('mother').value });
+});
+
+$('picky').addEventListener('change', () => {
+  save('sync', { level: $('picky').checked ? 'picky' : 'default' });
+});
+
+$('enabled').addEventListener('change', () => {
+  save('sync', { enabled: $('enabled').checked });
+});
+
+$('site').addEventListener('change', () => {
+  if (!siteHost) return;
+  const on = $('site').checked;
+  const list = settings.disabledSites.filter(h => h !== siteHost);
+  save('sync', { disabledSites: on ? [...list, siteHost] : list });
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync') return;
-  let langOrServer = false;
-  for (const k of Object.keys(DEFAULTS)) {
+  const defaults = area === 'sync' ? SYNC_DEFAULTS : area === 'local' ? LOCAL_DEFAULTS : null;
+  if (!defaults) return;
+  let reloadLangs = false;
+  for (const k of Object.keys(defaults)) {
     if (k in changes) {
-      settings[k] = changes[k].newValue ?? DEFAULTS[k];
-      langOrServer = langOrServer || k === 'serverUrl' || k === 'language';
+      settings[k] = changes[k].newValue ?? defaults[k];
+      reloadLangs = reloadLangs || k === 'serverUrl' || k === 'language';
     }
   }
   renderWords();
   renderRules();
-  if (langOrServer) {
+  renderFields();
+  renderToggles();
+  if (reloadLangs) {
     if (document.activeElement !== $('server')) $('server').value = settings.serverUrl;
+    syncVariantsVisibility();
     loadLanguages();
   }
 });
 
-chrome.storage.sync.get(DEFAULTS, (items) => {
-  Object.assign(settings, items);
+// The tab's hostname is what "disable on this site" is keyed by; host
+// permissions make tab.url readable. chrome:// and extension pages have no
+// meaningful host, so the row stays hidden there.
+async function currentHost() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return '';
+    const u = new URL(tab.url);
+    return /^https?:$/.test(u.protocol) ? u.hostname : '';
+  } catch {
+    return '';
+  }
+}
+
+(async () => {
+  const [sync, local, host] = await Promise.all([
+    chrome.storage.sync.get(SYNC_DEFAULTS),
+    chrome.storage.local.get(LOCAL_DEFAULTS),
+    currentHost(),
+  ]);
+  Object.assign(settings, sync, local);
+  siteHost = host;
   $('server').value = settings.serverUrl;
   renderWords();
   renderRules();
+  renderFields();
+  renderToggles();
   loadLanguages();
-});
+})();

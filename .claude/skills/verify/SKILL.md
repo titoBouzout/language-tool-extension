@@ -35,3 +35,21 @@ page console errors, and writes screenshots (underlines, popups, prefs page).
 - Pick test sentences with exactly the matches you assert on: LanguageTool
   also flags things like lowercase sentence starts, which shifts segment
   indexes (that once made an "ignore word" assertion grab the wrong match).
+- **Only `content/boot.js` is injected by the manifest.** The rest is
+  dynamically imported the first time a frame sees an editable, so nothing
+  exists until something is focused — wait for that before asserting on
+  `#lt-ext-root`, `.lt-ext-seg` or `CSS.highlights`.
+- **`use_dynamic_url` must stay off** for `content/*.js` in
+  `web_accessible_resources`. A dynamic URL applies only to the entry point;
+  the relative imports inside it resolve back to the static paths, which are
+  then blocked ("Resources must be listed in the web_accessible_resources
+  manifest key") and the extension silently does nothing.
+- `spellcheck="false"` is deliberately **not** honoured (it is inherited, so
+  one attribute on `<body>` used to silence the whole site). The per-field
+  opt-out is the popup's "Disable here", stored in `chrome.storage.local`
+  under `disabledFields`.
+- Rows toggled with the `hidden` attribute need `[hidden] { display: none }`
+  in popup.css — they carry `display: flex`, which beats the UA stylesheet.
+- Server-option steps (preferredVariants, picky) drive `chrome.storage` from
+  the prefs page and rely on the content script's own re-check on change;
+  allow ~2.5s to settle.

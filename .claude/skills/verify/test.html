@@ -20,8 +20,12 @@
   <p>One sentence here.</p>
   <p>This is Twoo much.</p>
 </div>
-<p>spellcheck=false textarea (must be skipped):</p>
+<p>spellcheck=false textarea (attribute is ignored — must still be checked):</p>
 <textarea id="nospell" spellcheck="false"></textarea>
+<p>sensitive fields (must never be checked or sent to the server):</p>
+<input id="otp" type="text" autocomplete="one-time-code">
+<input id="cardnum" type="text" name="credit_card_number">
+<input id="pin" type="text" maxlength="6">
 <p>never-focused mirror input (page dispatches synthetic input events):</p>
 <input id="mirror" type="text">
 <p>chat-style input (Enter or Send clears it programmatically, no input event):</p>
@@ -101,4 +105,12 @@
   window.__ce3model = () => model;
 })();
 </script>
+<p>dialect field (auto-detect + preferredVariants):</p>
+<textarea id="dialect"></textarea>
+<p>picky-level field:</p>
+<textarea id="picky-ta"></textarea>
+<p>long text (exercises the tail window):</p>
+<textarea id="long"></textarea>
+<p>stale-offset field:</p>
+<textarea id="stale"></textarea>
 <div class="spacer"></div>

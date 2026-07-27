@@ -2,7 +2,7 @@
 // match: message, replacements (with whitespace-only values made visible),
 // rule category/description, "about this rule" link, detected language, and
 // ignore/disable actions.
-'use strict';
+const LT = (globalThis.LT ??= {});
 
 (() => {
   let active = null; // { root, cleanup: fn[] }
@@ -104,6 +104,20 @@
       root.appendChild(div('lt-ext-pop-lang', 'Detected language: ' + s.detectedLanguage.name));
     }
 
+    // chrome.storage writes fail on quota (sync caps items at 8KB) and on the
+    // write-rate limit. Keep the popup open and say so, rather than closing as
+    // if the word had been saved.
+    async function persist(area, items) {
+      if (await LT.save(area, items)) { LT.closePopup(); return; }
+      if (active?.root !== root) return;
+      let note = root.querySelector('.lt-ext-pop-error');
+      if (!note) {
+        note = div('lt-ext-pop-error');
+        root.appendChild(note);
+      }
+      note.textContent = LT.saveError || 'Could not save';
+    }
+
     const actions = div('lt-ext-pop-actions');
     const ruleId = match.rule?.id;
     if (ruleId) {
@@ -111,9 +125,7 @@
         actions.appendChild(div('lt-ext-pop-note', 'Rule disabled'));
       } else {
         const b = button('lt-ext-pop-act', 'Disable rule', () => {
-          chrome.storage.sync.set({ disabledRules: [...LT.settings.disabledRules, ruleId] })
-            .catch(() => {});
-          LT.closePopup();
+          persist('sync', { disabledRules: [...LT.settings.disabledRules, ruleId] });
         });
         b.title = ruleId;
         actions.appendChild(b);
@@ -126,12 +138,23 @@
         actions.appendChild(div('lt-ext-pop-note', 'Word ignored'));
       } else {
         actions.appendChild(button('lt-ext-pop-act', 'Ignore ‘' + trunc(word, 24) + '’', () => {
-          chrome.storage.sync.set({ ignoredWords: [...LT.settings.ignoredWords, word] })
-            .catch(() => {});
-          LT.closePopup();
+          persist('sync', { ignoredWords: [...LT.settings.ignoredWords, word] });
         }));
       }
     }
+    // Per-field opt-out. This replaces honouring the page's spellcheck="false"
+    // (which is inherited, so a single attribute on <body> used to silence the
+    // extension across a whole site) with a decision the user makes.
+    const off = button('lt-ext-pop-act', 'Disable here', () => {
+      const host = LT.siteHost;
+      const fields = LT.settings.disabledFields;
+      const key = LT.fieldKey(s.el);
+      const list = fields[host] || [];
+      if (list.includes(key)) { LT.closePopup(); return; }
+      persist('local', { disabledFields: { ...fields, [host]: [...list, key] } });
+    });
+    off.title = 'Stop checking this field on ' + LT.siteHost;
+    actions.appendChild(off);
     if (actions.childNodes.length) root.appendChild(actions);
 
     // Keep focus (and the caret) in the field while interacting with the

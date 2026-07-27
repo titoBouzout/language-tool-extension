@@ -2,14 +2,22 @@
 // execCommand('insertText') first — it goes through the browser's editing
 // pipeline, so it preserves the undo stack and fires the same trusted-looking
 // input events frameworks listen for.
-'use strict';
+const LT = (globalThis.LT ??= {});
 
 LT.applyReplacement = function (s, match, value) {
   const el = s.el;
   const start = match.offset;
   const end = match.offset + match.length;
+  // match.offset indexes s.lastChecked. Typing closes the popup, but a
+  // programmatic edit (draft restore, a collaborative or async re-render)
+  // fires no input event and leaves the popup open pointing at offsets that
+  // have moved. Applying then would splice the replacement into unrelated
+  // text, so re-read the live text first and bail to a recheck if it moved.
+  const expected = (s.lastChecked ?? '').slice(start, end);
+  const stale = () => { LT.afterEdit?.(s); };
 
   if (s.kind === 'field') {
+    if (el.value.slice(start, end) !== expected) return stale();
     el.focus();
     el.setSelectionRange(start, end);
     let ok = false;
@@ -39,6 +47,7 @@ LT.applyReplacement = function (s, match, value) {
 
   // contenteditable
   const map = LT.ceBuildMap(el);
+  if (map.text.slice(start, end) !== expected) return stale();
   const range = LT.ceRangeFor(map, start, end);
   if (!range) return;
   const rootNode = el.getRootNode();

@@ -26,21 +26,61 @@ async function fetchJson(url, options, timeoutMs) {
   }
 }
 
+// Identical requests are common: refocusing a field, a settings change that
+// re-checks every live element, the retry backoff after the server comes back,
+// and several frames of one page holding the same draft. `cache` skips the
+// round-trip entirely; `inflight` collapses concurrent duplicates into one.
+// Both are keyed on the exact request body, so any parameter change misses.
+const CACHE_MAX = 30;
+const CACHE_MAX_TEXT = 10000; // don't hold megabytes of drafts in the worker
+const cache = new Map();      // key -> { matches, language }, in LRU order
+const inflight = new Map();   // key -> Promise
+
 async function handleCheck(req) {
-  const params = new URLSearchParams({
-    language: req.language || 'auto',
-    text: String(req.text ?? ''),
-  });
+  const base = serverBase(req.serverUrl);
+  const text = String(req.text ?? '');
+  const params = new URLSearchParams({ language: req.language || 'auto', text });
+  if (req.language === 'auto' && Array.isArray(req.preferredVariants) && req.preferredVariants.length) {
+    params.set('preferredVariants', req.preferredVariants.join(','));
+  }
+  if (req.motherTongue) params.set('motherTongue', req.motherTongue);
+  if (req.level === 'picky') params.set('level', 'picky');
   if (Array.isArray(req.disabledRules) && req.disabledRules.length) {
     params.set('disabledRules', req.disabledRules.join(','));
   }
-  const res = await fetchJson(serverBase(req.serverUrl) + '/v2/check', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
-  }, 15000);
-  if (res.error) return { error: res.error };
-  return { matches: res.data.matches || [], language: res.data.language || null };
+  const body = params.toString();
+  const key = base + '\n' + body;
+
+  const hit = cache.get(key);
+  if (hit) {
+    cache.delete(key); // LRU bump
+    cache.set(key, hit);
+    return hit;
+  }
+  const pending = inflight.get(key);
+  if (pending) return pending;
+
+  const task = (async () => {
+    const res = await fetchJson(base + '/v2/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    }, 15000);
+    if (res.error) return { error: res.error };
+    const out = { matches: res.data.matches || [], language: res.data.language || null };
+    if (text.length <= CACHE_MAX_TEXT) {
+      cache.set(key, out);
+      while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+    }
+    return out;
+  })();
+
+  inflight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    inflight.delete(key);
+  }
 }
 
 async function handleLanguages(req) {
@@ -48,6 +88,11 @@ async function handleLanguages(req) {
   if (res.error) return { error: res.error };
   return { languages: Array.isArray(res.data) ? res.data : [] };
 }
+
+// A stale cache would keep serving matches for rules the user just re-enabled
+// only if the key were unchanged — it isn't, since disabledRules is part of
+// the body. Ignored words are filtered in the content script, so they never
+// reach the server. Server URL changes are keyed too. Nothing to invalidate.
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request?.type === 'checkText') {

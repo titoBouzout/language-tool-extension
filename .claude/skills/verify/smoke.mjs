@@ -349,13 +349,60 @@ await step('controlled editor (Slate-like, Discord): correction survives further
 
 // --- probes ---
 
-await step('probe: spellcheck=false textarea is skipped', async () => {
-  const before = await boxCount();
+// Segments overlapping a given field, by id.
+const segsOver = (id) => page.evaluate((fid) => {
+  const el = document.getElementById(fid);
+  const r = el.getBoundingClientRect();
+  return [...document.querySelectorAll('.lt-ext-seg')].filter(s => {
+    const b = s.getBoundingClientRect();
+    return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+  }).length;
+}, id);
+
+await step('probe: spellcheck=false is ignored — the field is still checked', async () => {
   await page.click('#nospell');
-  await page.type('#nospell', 'definately wrong');
-  await sleep(1500);
-  const after = await boxCount();
-  if (after !== before) throw new Error(`overlay was attached (${before} -> ${after})`);
+  await page.type('#nospell', 'A worng word here.');
+  await page.waitForFunction(() => {
+    const r = document.getElementById('nospell').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  return `${await segsOver('nospell')} segments despite spellcheck="false"`;
+});
+
+await step('probe: "Disable here" opts one field out, and it sticks', async () => {
+  await clickSeg({ id: 'nospell', index: 0 });
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  const clicked = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.lt-ext-pop-act')]
+      .find(b => b.textContent === 'Disable here');
+    if (!b) return false;
+    b.click();
+    return true;
+  });
+  if (!clicked) throw new Error('no "Disable here" button in the popup');
+  await sleep(700);
+  if (await segsOver('nospell') !== 0) throw new Error('underlines remain after Disable here');
+  // Re-focusing and editing must not re-attach it.
+  await page.click('#nospell');
+  await page.type('#nospell', ' Anothr one.');
+  await sleep(1800);
+  if (await segsOver('nospell') !== 0) throw new Error('field re-attached after Disable here');
+  return 'field stays unchecked through refocus + edit';
+});
+
+await step('probe: sensitive fields are never checked', async () => {
+  for (const [id, why] of [['otp', 'autocomplete=one-time-code'],
+                           ['cardnum', 'name=credit_card_number'],
+                           ['pin', 'maxlength=6']]) {
+    await page.click('#' + id);
+    await page.type('#' + id, 'worng');
+    await sleep(1200);
+    if (await segsOver(id) !== 0) throw new Error(`#${id} (${why}) was checked`);
+  }
+  return 'otp, card number and short-maxlength fields skipped';
 });
 
 await step('probe: field edited via synthetic input events is checked without focus', async () => {
@@ -449,12 +496,32 @@ await step('prefs popup: languages load from server, ignored word listed', async
     () => document.querySelectorAll('#language option').length > 5, { timeout: 8000 });
   const info = await prefs.evaluate(() => ({
     langs: document.querySelectorAll('#language option').length,
+    variants: document.querySelectorAll('#variants option').length,
+    mothers: document.querySelectorAll('#mother option').length,
     status: document.getElementById('status').className,
     chips: [...document.querySelectorAll('.chip')].map(c => c.textContent.replace('×', '').trim()),
+    fields: [...document.querySelectorAll('#fields li span')].map(s => s.textContent),
     server: document.getElementById('server').value,
+    enabled: document.getElementById('enabled').checked,
+    // [hidden] rows carry display:flex, which beats the UA display:none
+    // unless the stylesheet forces it.
+    siteRowShown: document.getElementById('site-row').offsetParent !== null,
+    variantsRowShown: document.getElementById('variants-row').offsetParent !== null,
   }));
+  // Opened as a plain tab there is no http(s) host to key a per-site
+  // disable on, so that row must stay hidden.
+  if (info.siteRowShown) throw new Error('site row visible with no hostname');
+  if (!info.variantsRowShown) throw new Error('variants row hidden while language=auto');
   if (!info.status.includes('ok')) throw new Error(`status: ${info.status}`);
   if (!info.chips.includes('mispeled')) throw new Error(`chips: ${JSON.stringify(info.chips)}`);
+  if (!info.enabled) throw new Error('extension reported as globally off');
+  // Every variant option must name a dialect — preferredVariants is invalid
+  // otherwise.
+  if (info.variants < 2) throw new Error(`variant options: ${info.variants}`);
+  // The field disabled by the popup probe above must be listed and removable.
+  if (!info.fields.some(f => f.includes('textarea#nospell'))) {
+    throw new Error(`disabled fields: ${JSON.stringify(info.fields)}`);
+  }
   // No manual add input anymore — words are only added via the page popup's
   // Ignore action. Removing via the chip's × must still work.
   await prefs.click('.chip .remove');
@@ -462,7 +529,139 @@ await step('prefs popup: languages load from server, ignored word listed', async
   const chips = await prefs.$$eval('.chip', els => els.map(c => c.textContent.replace('×', '').trim()));
   if (chips.includes('mispeled')) throw new Error(`remove failed: ${JSON.stringify(chips)}`);
   await prefs.screenshot({ path: path.join(SHOTS, '06-prefs.png') });
-  return `${info.langs} languages, server=${info.server}, chip removal ok`;
+  return `${info.langs} languages, ${info.variants} variants, ${info.mothers} mother tongues, ` +
+    `server=${info.server}, chip removal ok, ${info.fields.length} disabled field(s)`;
+});
+
+await step('prefs popup: global switch off disposes live overlays', async () => {
+  const prefs = (await browser.pages()).at(-1);
+  await prefs.click('#enabled');
+  await sleep(600);
+  await page.bringToFront();
+  const left = await page.$$eval('.lt-ext-seg', els => els.filter(e => {
+    const r = e.getBoundingClientRect();
+    return r.width > 0;
+  }).length);
+  if (left !== 0) throw new Error(`${left} segments survived the global switch`);
+  // Back on, so the profile isn't left disabled for a later run.
+  await prefs.bringToFront();
+  await prefs.click('#enabled');
+  await sleep(300);
+  return 'all overlays removed while off';
+});
+
+// --- LanguageTool request options ---
+// Driven through storage from the prefs page, which is what the UI does; the
+// content script re-checks every live element when these keys change.
+
+const prefsPage = async () =>
+  (await browser.pages()).find(p => p.url().includes('/pages/popup.html'));
+
+const settle = async (id, ms = 2500) => {
+  await sleep(ms);
+  return segsOver(id);
+};
+
+await step('preferredVariants: auto-detect honours the chosen English variant', async () => {
+  const prefs = await prefsPage();
+  await prefs.evaluate(() => chrome.storage.sync.set({ language: 'auto', preferredVariants: [] }));
+  await sleep(300);
+  await page.bringToFront();
+  await page.click('#dialect');
+  await page.type('#dialect', 'I like the colour of that lorry.');
+  await page.waitForFunction(() => {
+    const r = document.getElementById('dialect').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  const before = await segsOver('dialect');
+
+  await prefs.evaluate(() => chrome.storage.sync.set({ preferredVariants: ['en-GB'] }));
+  const after = await settle('dialect');
+  if (after !== 0) throw new Error(`expected 0 segments with en-GB preferred, got ${after}`);
+  return `${before} segments as en-US → 0 as en-GB`;
+});
+
+await step('level=picky surfaces extra rules', async () => {
+  const prefs = await prefsPage();
+  await prefs.evaluate(() => chrome.storage.sync.set({ language: 'en-US', level: 'default' }));
+  await sleep(300);
+  await page.bringToFront();
+  await page.click('#picky-ta');
+  await page.type('#picky-ta', 'He went to buy apples, oranges and bananas.');
+  const before = await settle('picky-ta');
+
+  await prefs.evaluate(() => chrome.storage.sync.set({ level: 'picky' }));
+  const after = await settle('picky-ta');
+  if (after <= before) throw new Error(`picky gave ${after} segments, default gave ${before}`);
+  await shot('07-picky');
+  return `${before} → ${after} segments`;
+});
+
+await step('long text: tail window keeps match offsets aligned', async () => {
+  const prefs = await prefsPage();
+  await prefs.evaluate(() => chrome.storage.sync.set({ language: 'en-US', level: 'default' }));
+  await sleep(300);
+  await page.bringToFront();
+  // ~27k chars — well past MAX_TEXT — of clean prose with one misspelling at
+  // the very end. The reported offset has to be shifted back by the size of
+  // the discarded head, or the underline lands on the wrong word.
+  await page.evaluate(() => {
+    const ta = document.getElementById('long');
+    ta.value = 'The quick brown fox jumps over the lazy dog. '.repeat(600) + 'I made a worng choice.';
+    ta.dispatchEvent(new InputEvent('input', {
+      bubbles: true, composed: true, inputType: 'insertText', data: '.',
+    }));
+  });
+  await page.waitForFunction(() => {
+    const ta = document.getElementById('long');
+    ta.scrollTop = ta.scrollHeight;
+    const r = ta.getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 15000 });
+  await sleep(400);
+  await clickSeg({ id: 'long', index: 0 });
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  const labels = await page.$$eval('.lt-ext-pop-item', els => els.map(e => e.textContent));
+  if (!labels.includes('wrong')) {
+    throw new Error(`underline is not on "worng" — offsets drifted; popup: ${JSON.stringify(labels)}`);
+  }
+  await page.keyboard.press('Escape');
+  await shot('08-long-text');
+  return 'offset shifted correctly across a 27k-char tail window';
+});
+
+await step('stale offsets: a silent value change cancels the replacement', async () => {
+  await page.bringToFront();
+  await page.click('#stale');
+  await page.type('#stale', 'A worng word.');
+  await page.waitForFunction(() => {
+    const r = document.getElementById('stale').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  await clickSeg({ id: 'stale', index: 0 });
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+
+  // The page rewrites the field with no input event (draft restore, remote
+  // edit): the popup is still open and its offsets now point at other text.
+  const REPLACED = 'Totally different content, quite a lot longer than before.';
+  await page.evaluate((v) => { document.getElementById('stale').value = v; }, REPLACED);
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.lt-ext-pop-item')][0];
+    if (b) b.click();
+  });
+  await sleep(500);
+  const v = await page.$eval('#stale', el => el.value);
+  if (v !== REPLACED) throw new Error(`text was corrupted: ${JSON.stringify(v)}`);
+  return 'replacement declined, text left intact';
 });
 
 await browser.close();

@@ -1,7 +1,7 @@
 // A single container appended to <html> hosts everything the extension draws:
 // underline overlays for fields, the measuring mirror, and the suggestion
 // popup. The page's own DOM is never modified.
-'use strict';
+const LT = (globalThis.LT ??= {});
 
 // Interaction events must not escape extension UI: pages with click-outside
 // handlers, hotkeys, or hover tracking would react to clicks inside our

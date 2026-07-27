@@ -2,7 +2,7 @@
 // same text in a hidden mirror <div> with the element's text styles.
 // Returned rects are in content coordinates: relative to the element's
 // padding box, unscrolled.
-'use strict';
+const LT = (globalThis.LT ??= {});
 
 (() => {
   const PROPS = [

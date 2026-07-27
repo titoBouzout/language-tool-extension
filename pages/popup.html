@@ -10,9 +10,20 @@
   <header>
     <h1>LanguageTool</h1>
     <span id="status" class="dot" title="Checking server…"></span>
+    <label class="switch" title="Turn checking on or off everywhere">
+      <input id="enabled" type="checkbox">
+      <span class="track"></span>
+    </label>
   </header>
 
+  <p id="error" class="error" hidden></p>
+
   <main>
+    <label class="check" id="site-row" hidden>
+      <input id="site" type="checkbox">
+      <span>Disable on <b id="site-host"></b></span>
+    </label>
+
     <label class="field">
       <span>Server URL</span>
       <input id="server" type="text" placeholder="http://localhost:8010" spellcheck="false" autocomplete="off">
@@ -23,6 +34,24 @@
       <select id="language"></select>
     </label>
 
+    <label class="field" id="variants-row">
+      <span>Preferred variants</span>
+      <select id="variants" multiple size="4"></select>
+      <small>Auto-detect can tell English from German, but not British from
+        American. Pick the variants you write in.</small>
+    </label>
+
+    <label class="field">
+      <span>Native language</span>
+      <select id="mother"></select>
+      <small>Enables false-friend detection.</small>
+    </label>
+
+    <label class="check">
+      <input id="picky" type="checkbox">
+      <span>Picky mode — also flag style and typography</span>
+    </label>
+
     <section>
       <h2>Ignored words</h2>
       <div id="words" class="chips"></div>
@@ -31,6 +60,11 @@
     <section>
       <h2>Disabled rules</h2>
       <ul id="rules" class="rules"></ul>
+    </section>
+
+    <section>
+      <h2>Disabled fields</h2>
+      <ul id="fields" class="rules"></ul>
     </section>
   </main>
 

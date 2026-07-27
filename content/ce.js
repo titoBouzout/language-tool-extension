@@ -2,7 +2,7 @@
 // painted via ::highlight() pseudo-elements from Range objects, so the
 // page's DOM is never touched — framework-safe (React/Vue/editors keep
 // their own tree) and the caret never moves.
-'use strict';
+const LT = (globalThis.LT ??= {});
 
 (() => {
   LT.ceSupported = typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && !!CSS.highlights;
@@ -18,9 +18,11 @@
   // Linearizes an editable tree into checkable text. Unlike textContent, it
   // inserts "\n" at block boundaries and <br>, so LanguageTool doesn't see
   // adjacent paragraphs glued into one word. `entries` maps text nodes to
-  // their start offset in `text`; the synthetic newlines map to no node.
-  LT.ceBuildMap = function (root) {
+  // their start offset in `text` (sorted, non-overlapping); the synthetic
+  // newlines map to no node. `byNode` is the same data keyed for lookup.
+  function build(root) {
     const entries = [];
+    const byNode = new Map();
     let text = '';
     const pushBreak = () => {
       if (text && !text.endsWith('\n')) text += '\n';
@@ -39,7 +41,9 @@
             const nextB = c.nextSibling ? isBlockyEl(c.nextSibling) : parentIsBoundary;
             if (prevB && nextB) continue;
           }
-          entries.push({ node: c, start: text.length, len: c.data.length });
+          const e = { node: c, start: text.length, len: c.data.length };
+          entries.push(e);
+          byNode.set(c, e);
           text += c.data;
         } else if (c.nodeType === Node.ELEMENT_NODE) {
           if (SKIP.has(c.tagName)) continue;
@@ -51,19 +55,41 @@
         }
       }
     })(root);
-    return { text, entries };
+    return { text, entries, byNode };
+  }
+
+  // Walking the whole editable tree is the expensive part of a check, and a
+  // single synchronous flow asks for the same map several times (check ->
+  // filter -> paint). Memoize for the current task only: anything that yields
+  // (an await, a later event) drains the microtask queue and forces a rebuild,
+  // which is what re-anchors highlights after a framework re-render.
+  let memo = null;
+  LT.ceBuildMap = function (root) {
+    if (memo && memo.root === root) return memo.map;
+    const map = build(root);
+    memo = { root, map };
+    queueMicrotask(() => { memo = null; });
+    return map;
   };
 
+  // First entry that could contain `pos`. entries are sorted and
+  // non-overlapping, so both `start` and `start + len` are non-decreasing.
   function posToNodeOffset(map, pos) {
-    for (const e of map.entries) {
-      if (pos >= e.start && pos <= e.start + e.len) return { node: e.node, offset: pos - e.start };
+    const es = map.entries;
+    if (!es.length) return null;
+    let lo = 0, hi = es.length - 1, idx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (es[mid].start + es[mid].len >= pos) { idx = mid; hi = mid - 1; } else lo = mid + 1;
     }
-    // pos falls on a synthetic newline: clamp to the next node's start.
-    for (const e of map.entries) {
-      if (e.start > pos) return { node: e.node, offset: 0 };
+    if (idx < 0) {
+      const last = es[es.length - 1];
+      return { node: last.node, offset: last.len };
     }
-    const last = map.entries[map.entries.length - 1];
-    return last ? { node: last.node, offset: last.len } : null;
+    const e = es[idx];
+    // e.start > pos means pos landed on a synthetic newline: clamp to the
+    // start of the next real node.
+    return { node: e.node, offset: e.start <= pos ? pos - e.start : 0 };
   }
 
   LT.ceRangeFor = function (map, start, end) {
@@ -83,17 +109,16 @@
   // (node, offset in node) -> offset in map.text. -1 when unknown.
   LT.cePos = function (map, node, offset) {
     if (node.nodeType === Node.TEXT_NODE) {
-      for (const e of map.entries) {
-        if (e.node === node) return e.start + Math.min(offset, e.len);
-      }
-      return -1;
+      const e = map.byNode.get(node);
+      return e ? e.start + Math.min(offset, e.len) : -1;
     }
     const child = node.childNodes[offset];
     if (child) {
+      const direct = map.byNode.get(child);
+      if (direct) return direct.start;
       for (const e of map.entries) {
         const cmp = child.compareDocumentPosition(e.node);
-        if (child === e.node ||
-            (cmp & Node.DOCUMENT_POSITION_CONTAINED_BY) ||
+        if ((cmp & Node.DOCUMENT_POSITION_CONTAINED_BY) ||
             (cmp & Node.DOCUMENT_POSITION_FOLLOWING)) {
           return e.start;
         }
@@ -143,9 +168,10 @@
     s.ceRanges = [];
   };
 
-  // ::highlight() rules don't cascade into shadow trees, so when an editable
-  // lives inside one, adopt a copy of the highlight styles there. Values
-  // mirror content/styles.css.
+  // ::highlight() rules don't cascade into shadow trees, so an editable living
+  // in one needs its own copy. Keeping the rules here rather than in
+  // styles.css makes this the single source of truth — the document gets the
+  // same constructed sheet as any shadow root.
   const HIGHLIGHT_CSS = `
     ::highlight(lt-ext-spell) { text-decoration: underline wavy #ff6259 1.5px; text-decoration-skip-ink: none; background-color: rgba(255, 98, 89, 0.10); }
     ::highlight(lt-ext-grammar) { text-decoration: underline wavy #fbbc04 1.5px; text-decoration-skip-ink: none; background-color: rgba(251, 188, 4, 0.10); }
@@ -155,14 +181,17 @@
   let sharedSheet = null;
 
   LT.adoptHighlightStyles = function (rootNode) {
-    if (!(rootNode instanceof ShadowRoot) || adopted.has(rootNode)) return;
+    const target = rootNode instanceof ShadowRoot ? rootNode : document;
+    if (adopted.has(target)) return;
     try {
       if (!sharedSheet) {
         sharedSheet = new CSSStyleSheet();
         sharedSheet.replaceSync(HIGHLIGHT_CSS);
       }
-      rootNode.adoptedStyleSheets = [...rootNode.adoptedStyleSheets, sharedSheet];
-      adopted.add(rootNode);
-    } catch { /* closed/immutable shadow roots: highlights just won't paint */ }
+      target.adoptedStyleSheets = [...target.adoptedStyleSheets, sharedSheet];
+      adopted.add(target);
+    } catch { /* closed/immutable roots: highlights just won't paint there */ }
   };
+
+  if (LT.ceSupported) LT.adoptHighlightStyles(document);
 })();

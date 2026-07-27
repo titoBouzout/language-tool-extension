@@ -1,15 +1,23 @@
 // LanguageTool semantics: talking to the background worker and interpreting
 // match objects.
-'use strict';
+const LT = (globalThis.LT ??= {});
 
 // Resolves to { matches, language } or throws.
 LT.checkText = async function (text) {
   const s = LT.settings;
+  const language = s.language || 'auto';
   const resp = await chrome.runtime.sendMessage({
     type: 'checkText',
     text,
     serverUrl: s.serverUrl,
-    language: s.language || 'auto',
+    language,
+    // The detector can tell English from German but not en-GB from en-US, so
+    // without this a British writer gets "colour" and "lorry" flagged as
+    // misspellings. Only valid alongside language=auto.
+    preferredVariants: language === 'auto' && s.preferredVariants.length
+      ? s.preferredVariants : undefined,
+    motherTongue: s.motherTongue || undefined,
+    level: s.level === 'picky' ? 'picky' : undefined,
     disabledRules: s.disabledRules.length ? s.disabledRules : undefined,
   });
   if (!resp || resp.error) throw new Error(resp?.error || 'No response from background');

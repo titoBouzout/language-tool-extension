@@ -1,10 +1,14 @@
 // Orchestration. No MutationObserver, no page-wide scanning: an element is
-// attached the first time it receives focus (document-level focusin) or
-// dispatches an input event (document-level capture — catches fields a
-// framework edits without focusing, and elements focused before injection);
-// checks are debounced off its own input events, and only the handful of
-// most-recently-edited elements keep live state.
-'use strict';
+// attached the first time it receives focus or dispatches an input event —
+// both observed once each, at the document, in the capture phase. Checks are
+// debounced off those input events, and only the handful of most-recently
+// edited elements keep live state.
+const LT = (globalThis.LT ??= {});
+
+// Settings decide whether we may attach at all (global switch, per-site and
+// per-field opt-outs) and which server to ask, so nothing happens until the
+// first read resolves. boot.js keeps collecting candidates in the meantime.
+await LT.settingsReady;
 
 (() => {
   if (LT.started) return;
@@ -13,28 +17,80 @@
   const FIELD_TYPES = new Set(['', 'text', 'search']);
   const DEBOUNCE_MS = 500;
   const FOCUS_CHECK_MS = 250;
-  const MAX_LIVE = 8;   // most-recently-used elements that keep highlights
+  const MAX_LIVE = 8;     // most-recently-used elements that keep highlights
   const MAX_TEXT = 20000; // check the tail of longer texts (where typing happens)
+  const BOUNDARY_SCAN = 500;  // how far past the cut to look for a clean break
+  const FRAGMENT_GUARD = 200; // matches dropped when no clean break was found
 
   const states = new Map(); // el -> state, in LRU order
+  let contextDead = false;
 
-  // --- element discovery ---
+  // --- eligibility ---
+
+  // Fields that structurally hold codes and secrets rather than prose.
+  // Checking them is useless and would ship the value to the server.
+  const SENSITIVE_AUTOCOMPLETE = /^(?:one-time-code|current-password|new-password|cc-(?:number|csc|exp|exp-month|exp-year|name|type)|username|email|tel|tel-.+|impp|url)$/;
+  const SENSITIVE_HINT = /(?:^|[^a-z])(?:pass(?:word|wd|phrase)?|pwd|otp|totp|mfa|2fa|token|secret|api[-_ ]?key|cvv|cvc|csc|iban|swift|ssn|pin|routing|verification|security[-_ ]?code|card[-_ ]?number|credit[-_ ]?card|account[-_ ]?number)(?:$|[^a-z])/i;
+  const NUMERIC_MODES = new Set(['numeric', 'tel', 'decimal']);
+
+  function sensitiveField(el) {
+    const ac = el.getAttribute('autocomplete');
+    if (ac && ac.toLowerCase().split(/\s+/).some(t => SENSITIVE_AUTOCOMPLETE.test(t))) return true;
+    if (NUMERIC_MODES.has((el.getAttribute('inputmode') || '').toLowerCase())) return true;
+    // A field capped this short holds a code, a PIN or a postcode — never
+    // something a grammar checker has an opinion about.
+    if (el.maxLength > 0 && el.maxLength <= 8) return true;
+    const hint = [el.name, el.id, el.getAttribute('placeholder'), el.getAttribute('aria-label')]
+      .filter(Boolean).join(' ');
+    return !!hint && SENSITIVE_HINT.test(hint);
+  }
+
+  // Identifies one field on one site well enough for "Disable here" to stick
+  // across reloads. Generated ids (React's ":r3:", hashes, long digit runs)
+  // change on every mount, so those fall through to the structural path.
+  const GENERATED_ID = /^:r|\d{4,}|[0-9a-f]{8}/i;
+
+  LT.fieldKey = function (el) {
+    const id = el.getAttribute('id');
+    if (id && !GENERATED_ID.test(id)) return el.localName + '#' + id;
+    const name = el.getAttribute('name');
+    if (name) return el.localName + '[name=' + name + ']';
+    const label = el.getAttribute('aria-label');
+    if (label) return el.localName + '[aria=' + label.slice(0, 40) + ']';
+    const path = [];
+    for (let n = el; n && n.nodeType === Node.ELEMENT_NODE && path.length < 5; n = n.parentElement) {
+      let i = 1;
+      for (let p = n.previousElementSibling; p; p = p.previousElementSibling) {
+        if (p.localName === n.localName) i++;
+      }
+      path.unshift(n.localName + ':' + i);
+    }
+    return path.join('>');
+  };
+
+  function fieldDisabled(el) {
+    const keys = LT.settings.disabledFields[LT.siteHost];
+    // fieldKey walks the DOM, so only pay for it on sites that have opt-outs.
+    return !!keys?.length && keys.includes(LT.fieldKey(el));
+  }
 
   function editableRoot(t) {
+    if (contextDead || LT.siteDisabled()) return null;
     if (!(t instanceof Element) || t.closest('#lt-ext-root')) return null;
     if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) {
       if (t instanceof HTMLInputElement &&
           !FIELD_TYPES.has((t.getAttribute('type') || '').toLowerCase())) return null;
-      // spellcheck=false is the page opting out (also how code editors like
-      // Monaco/CodeMirror mark their hidden inputs) — respect it.
-      if (t.readOnly || t.disabled || t.spellcheck === false) return null;
-      return t;
+      // spellcheck="false" is deliberately ignored. It is an inherited
+      // attribute, so the single `<body spellcheck=false>` that pages use to
+      // suppress the browser's native squiggles would silence LanguageTool
+      // across the whole site. The popup's "Disable here" is the opt-out.
+      if (t.readOnly || t.disabled || sensitiveField(t)) return null;
+      return fieldDisabled(t) ? null : t;
     }
     if (t.isContentEditable || t.getAttribute?.('contenteditable') === 'plaintext-only') {
       let el = t;
       while (el.parentElement?.isContentEditable) el = el.parentElement;
-      if (el.spellcheck === false) return null;
-      return el;
+      return fieldDisabled(el) ? null : el;
     }
     return null;
   }
@@ -59,17 +115,11 @@
       ceRanges: [],   // ce: [{range, sev}] currently registered
       map: null,      // ce: text/node map the matches refer to
       seq: 0, timer: 0, retryMs: 0, lastChecked: null, detectedLanguage: null,
-      raf: 0, scrollRaf: 0, ro: null,
+      raf: 0, ro: null,
     };
-    s.onInput = (e) => onInput(s, e);
-    s.onClick = (e) => onClick(s, e);
-    el.addEventListener('input', s.onInput);
-    el.addEventListener('click', s.onClick);
 
     if (kind === 'field') {
       LT.fieldOverlay.create(s);
-      s.onScroll = () => syncScrollSoon(s);
-      el.addEventListener('scroll', s.onScroll, { passive: true });
       s.ro = new ResizeObserver(() => refreshFieldSoon(s));
       s.ro.observe(el);
     } else {
@@ -85,12 +135,8 @@
     states.delete(s.el);
     clearTimeout(s.timer);
     s.seq++; // invalidate in-flight checks
-    s.el.removeEventListener('input', s.onInput);
-    s.el.removeEventListener('click', s.onClick);
-    if (s.onScroll) s.el.removeEventListener('scroll', s.onScroll);
     s.ro?.disconnect();
     if (s.raf) cancelAnimationFrame(s.raf);
-    if (s.scrollRaf) cancelAnimationFrame(s.scrollRaf);
     LT.fieldOverlay.remove(s);
     LT.ceClear(s);
   }
@@ -104,6 +150,7 @@
   }
 
   function scheduleCheck(s, delay) {
+    if (contextDead) return;
     clearTimeout(s.timer);
     s.timer = setTimeout(() => runCheck(s), delay);
   }
@@ -122,7 +169,48 @@
     scheduleCheck(s, DEBOUNCE_MS);
   }
 
+  // Only the tail of a very long text is checked — that is where typing
+  // happens. Cutting at a fixed offset lands mid-word and makes LanguageTool
+  // report errors on the fragment it now starts with, so prefer a paragraph,
+  // then a line, then a sentence boundary. When only a word boundary is
+  // available, distrust the matches in what is left of the first sentence.
+  function tailWindow(text) {
+    if (text.length <= MAX_TEXT) return { slice: text, shift: 0, guard: 0 };
+    const cut = text.length - MAX_TEXT;
+    const probe = text.slice(cut, cut + BOUNDARY_SCAN);
+
+    let rel = -1;
+    const para = probe.indexOf('\n\n');
+    const line = probe.indexOf('\n');
+    if (para >= 0) rel = para + 2;
+    else if (line >= 0) rel = line + 1;
+    else {
+      const sentence = /[.!?]["'”’)\]]?\s+/.exec(probe);
+      if (sentence) rel = sentence.index + sentence[0].length;
+    }
+    if (rel >= 0) return { slice: text.slice(cut + rel), shift: cut + rel, guard: 0 };
+
+    const ws = /\s/.exec(probe);
+    const at = cut + (ws ? ws.index + 1 : 0);
+    return { slice: text.slice(at), shift: at, guard: FRAGMENT_GUARD };
+  }
+
+  // Reloading or updating the extension orphans every already-injected frame:
+  // chrome.runtime is gone and every later message rejects identically. Left
+  // alone, the backoff below would keep firing in every frame of every open
+  // tab for as long as they stay open.
+  function orphaned(err) {
+    let alive = false;
+    try { alive = !!chrome.runtime?.id; } catch { /* invalidated */ }
+    if (alive && !/context invalidated/i.test(err?.message || '')) return false;
+    contextDead = true;
+    LT.closePopup();
+    for (const s of [...states.values()]) dispose(s);
+    return true;
+  }
+
   async function runCheck(s) {
+    if (contextDead) return;
     if (!s.el.isConnected) { dispose(s); return; }
     const { text, map } = textOf(s);
     if (text === s.lastChecked) {
@@ -145,29 +233,33 @@
       return;
     }
 
-    const clipped = text.length > MAX_TEXT;
+    const win = tailWindow(text);
     let resp;
     try {
-      resp = await LT.checkText(clipped ? text.slice(-MAX_TEXT) : text);
-    } catch {
+      resp = await LT.checkText(win.slice);
+    } catch (err) {
       if (seq !== s.seq) return;
+      if (orphaned(err)) return;
       // Server unreachable: clear stale marks and retry with backoff, so
       // highlights come back without requiring another keystroke.
       s.lastChecked = null;
       s.raw = [];
       applyMatches(s);
       s.retryMs = Math.min((s.retryMs || 1000) * 2, 16000);
-      scheduleCheck(s, s.retryMs);
+      // Nobody is watching a hidden tab, and retrying there just keeps every
+      // background tab polling a server that is down. visibilitychange resumes.
+      if (!document.hidden) scheduleCheck(s, s.retryMs);
       return;
     }
     if (seq !== s.seq) return;
     s.retryMs = 0;
 
-    const shift = clipped ? text.length - MAX_TEXT : 0;
     s.lastChecked = text;
     s.map = map;
     s.detectedLanguage = resp.language?.detectedLanguage || null;
-    s.raw = (resp.matches || []).map(m => (shift ? { ...m, offset: m.offset + shift } : m));
+    s.raw = (resp.matches || [])
+      .filter(m => m.offset >= win.guard)
+      .map(m => (win.shift ? { ...m, offset: m.offset + win.shift } : m));
     applyMatches(s);
   }
 
@@ -192,7 +284,8 @@
     } else {
       // s.map was built before the server round-trip; a framework re-render
       // during the await (Slate/Discord re-parse) leaves its nodes detached
-      // and the highlights invisible. Re-anchor against the live DOM.
+      // and the highlights invisible. Re-anchor against the live DOM — the
+      // await drained the microtask queue, so this is a genuine rebuild.
       const map = LT.ceBuildMap(s.el);
       if (s.lastChecked != null && map.text !== s.lastChecked) {
         // Text changed under us with no input event — the matches don't
@@ -221,14 +314,6 @@
     });
   }
 
-  function syncScrollSoon(s) {
-    if (s.scrollRaf) return;
-    s.scrollRaf = requestAnimationFrame(() => {
-      s.scrollRaf = 0;
-      LT.fieldOverlay.syncScroll(s);
-    });
-  }
-
   let repositionRaf = 0;
   function repositionAll() {
     if (repositionRaf) return;
@@ -237,7 +322,12 @@
       const dead = [];
       for (const s of states.values()) {
         if (!s.el.isConnected) { dead.push(s); continue; }
-        if (s.kind === 'field') LT.fieldOverlay.position(s);
+        if (s.kind === 'field') {
+          LT.fieldOverlay.position(s);
+          // The document-level scroll listener also fires for the field's own
+          // scrollbar, so the inner layer is re-synced from here too.
+          LT.fieldOverlay.syncScroll(s);
+        }
       }
       dead.forEach(dispose);
     });
@@ -288,6 +378,8 @@
 
   // --- global wiring ---
 
+  const pathTarget = (e) => (e.composedPath ? e.composedPath()[0] : e.target);
+
   function considerTarget(t) {
     const el = editableRoot(t);
     if (!el) return;
@@ -295,64 +387,63 @@
     if (s) scheduleCheck(s, FOCUS_CHECK_MS); // runCheck no-ops if unchanged
   }
 
-  document.addEventListener('focusin', (e) => {
-    considerTarget(e.composedPath ? e.composedPath()[0] : e.target);
-  }, true);
+  // One document-level listener per event type, rather than three per attached
+  // element. Fewer registrations, and — because these run in the capture phase
+  // above anything the page installs on an ancestor — they still fire on pages
+  // that stop input/click events before they reach the field.
+  document.addEventListener('focusin', (e) => considerTarget(pathTarget(e)), true);
 
-  // Input events are a discovery signal too: mirror/autofill patterns edit
-  // fields that never get focus, and an element focused before injection
-  // never produced a focusin we could see. Also LRU-bumps the element being
-  // edited so active fields aren't evicted while in use.
+  // Input is a discovery signal too: mirror/autofill patterns edit fields that
+  // never get focus, and an element focused before injection never produced a
+  // focusin we could see. This also LRU-bumps the element being edited so
+  // active fields aren't evicted while in use.
   document.addEventListener('input', (e) => {
-    const el = editableRoot(e.composedPath ? e.composedPath()[0] : e.target);
+    const el = editableRoot(pathTarget(e));
     if (!el) return;
-    const known = states.has(el);
     const s = attach(el);
-    // Newly attached: its own listener may also see this event; the shared
-    // timer makes the double onInput harmless.
-    if (s && !known) onInput(s, e);
+    if (s) onInput(s, e);
   }, true);
-
-  {
-    // Descend through shadow roots: activeElement stops at the host.
-    let ae = document.activeElement;
-    while (ae?.shadowRoot?.activeElement) ae = ae.shadowRoot.activeElement;
-    if (ae && ae !== document.body) considerTarget(ae);
-  }
 
   document.addEventListener('scroll', () => {
     if (states.size) repositionAll();
   }, { capture: true, passive: true });
 
-  // Clicks that toggle layout (accordions, tabs) move fields without any
-  // scroll event; bubble phase runs after the page's own handlers. A click
-  // can also be a Send button clearing the field programmatically (no input
-  // event) — after a beat, cheaply compare field values and treat any
-  // change as input so stale overlays go away.
+  // A click can be a Send button clearing the field programmatically (no input
+  // event) — after a beat, compare the live text against what we last checked
+  // and treat any difference as input, so stale marks go away.
   let revalidateTimer = 0;
-  function revalidateFieldsSoon() {
+  function revalidateSoon() {
     clearTimeout(revalidateTimer);
     revalidateTimer = setTimeout(() => {
       for (const s of states.values()) {
-        if (s.kind === 'field' && s.lastChecked != null &&
-            s.el.isConnected && s.el.value !== s.lastChecked) {
-          onInput(s);
-        }
+        if (s.lastChecked == null || !s.el.isConnected) continue;
+        const now = s.kind === 'field' ? s.el.value : LT.ceBuildMap(s.el).text;
+        if (now !== s.lastChecked) onInput(s);
       }
     }, FOCUS_CHECK_MS);
   }
-  document.addEventListener('click', () => {
+
+  // Capture, like the others, so a page that stops click propagation on an
+  // ancestor can't make underlines unclickable. Our own popup is excluded by
+  // editableRoot's #lt-ext-root check rather than by phase. Clicks that toggle
+  // layout (accordions, tabs) move fields without producing a scroll event —
+  // repositionAll is rAF-batched, so it still lands after the page's own
+  // handlers have run and changed the layout.
+  document.addEventListener('click', (e) => {
     if (!states.size) return;
     repositionAll();
-    revalidateFieldsSoon();
-  });
+    revalidateSoon();
+    const el = editableRoot(pathTarget(e));
+    const s = el && states.get(el);
+    if (s) onClick(s, e);
+  }, true);
 
   // Chat apps consume Enter to send, then clear the input programmatically —
   // again no input event. Revalidate the element shortly after; if Enter
   // just typed a newline, the resulting input event re-debounces normally.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || !states.size) return;
-    const el = editableRoot(e.composedPath ? e.composedPath()[0] : e.target);
+    const el = editableRoot(pathTarget(e));
     const s = el && states.get(el);
     if (s) scheduleCheck(s, FOCUS_CHECK_MS);
   }, true);
@@ -364,14 +455,29 @@
     }
   });
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    for (const s of states.values()) if (s.retryMs) scheduleCheck(s, 100);
+  });
+
   // Called by replace.js after applying a suggestion, because a framework
   // that consumes the synthetic beforeinput produces no native input event.
   // Redundant with the input listener on the other paths — the shared timer
   // dedupes.
   LT.afterEdit = (s) => onInput(s);
 
+  const RECHECK_KEYS = new Set(['serverUrl', 'language', 'preferredVariants', 'motherTongue', 'level']);
+
   LT.onSettingsChanged.push((keys) => {
-    if (keys.includes('serverUrl') || keys.includes('language')) {
+    // An element that just became ineligible (extension switched off, site or
+    // field disabled) has to lose its state and its marks right away.
+    if (keys.some(k => k === 'enabled' || k === 'disabledSites' || k === 'disabledFields')) {
+      LT.closePopup();
+      for (const s of [...states.values()]) {
+        if (editableRoot(s.el) !== s.el) dispose(s);
+      }
+    }
+    if (keys.some(k => RECHECK_KEYS.has(k))) {
       for (const s of states.values()) {
         s.lastChecked = null;
         scheduleCheck(s, 100);
@@ -380,4 +486,9 @@
       for (const s of states.values()) applyMatches(s);
     }
   });
+
+  // Anything boot.js saw while the modules were loading.
+  for (const t of LT.pending || []) considerTarget(t);
+  LT.pending = null;
+  LT.bootDone?.();
 })();
