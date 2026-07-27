@@ -565,6 +565,65 @@ await step('probe: chat-style send clears stale underlines (Enter and Send click
   return 'underlines removed after both send flows';
 });
 
+await step('probe: paste is checked even when the page cancels it', async () => {
+  // Headless denies navigator.clipboard.writeText, so load the system
+  // clipboard the way a user would: type it somewhere and cut it back out.
+  const PASTED = 'This is a testt with a speling erorr.';
+  await page.click('#clip-src');
+  await page.type('#clip-src', PASTED);
+  await page.keyboard.down('Control');
+  await page.keyboard.press('KeyA');
+  await page.keyboard.press('KeyX');
+  await page.keyboard.up('Control');
+  await sleep(300);
+
+  const paste = async () => {
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyV');
+    await page.keyboard.up('Control');
+  };
+
+  // Neither target fires an input event: both cancel the paste and apply the
+  // clipboard themselves, the way every controlled editor does.
+  await page.click('#paste-ta');
+  await paste();
+  await page.waitForFunction(() => {
+    const r = document.getElementById('paste-ta').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  const nField = await segsOver('paste-ta');
+  if (await page.$eval('#paste-ta', el => el.value) !== PASTED) {
+    throw new Error('paste did not reach the controlled field');
+  }
+
+  await page.click('#paste-ce');
+  await paste();
+  const inCe = () => page.evaluate(() => {
+    const el = document.getElementById('paste-ce');
+    let n = 0;
+    for (const k of ['lt-ext-spell', 'lt-ext-grammar', 'lt-ext-style']) {
+      for (const r of CSS.highlights.get(k) || []) {
+        if (el.contains(r.startContainer)) n++;
+      }
+    }
+    return n;
+  });
+  await page.waitForFunction(() => {
+    const el = document.getElementById('paste-ce');
+    for (const k of ['lt-ext-spell', 'lt-ext-grammar', 'lt-ext-style']) {
+      for (const r of CSS.highlights.get(k) || []) {
+        if (el.contains(r.startContainer)) return true;
+      }
+    }
+    return false;
+  }, { timeout: 8000 });
+  await shot('07-paste-checked');
+  return `${nField} segments in the controlled field, ${await inCe()} highlights in the editor`;
+});
+
 await step('probe: overlay stays aligned after page scroll', async () => {
   await page.mouse.wheel({ deltaY: 300 });
   await sleep(400);

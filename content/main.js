@@ -123,6 +123,7 @@ await LT.settingsReady;
       splice: null,   // edit we are about to make ourselves (see reanchor)
       recheck: false, // ask the server even though lastChecked matches
       mo: null, moTimer: 0, // waiting for a controlled editor to apply that edit
+      clipboard: 0,   // paste/cut/drop that may never fire an input event
     };
 
     if (kind === 'field') {
@@ -141,6 +142,7 @@ await LT.settingsReady;
   function dispose(s) {
     states.delete(s.el);
     clearTimeout(s.timer);
+    clearTimeout(s.clipboard);
     s.seq++; // invalidate in-flight checks
     s.ro?.disconnect();
     stopWatching(s);
@@ -222,6 +224,10 @@ await LT.settingsReady;
 
   function onInput(s, e) {
     LT.closePopup();
+    // The input event a paste normally fires got here first: the pending
+    // clipboard fallback below has nothing left to do.
+    clearTimeout(s.clipboard);
+    s.clipboard = 0;
     const splice = s.splice;
     s.splice = null;
     let kept = false;
@@ -484,19 +490,51 @@ await LT.settingsReady;
     if (states.size) repositionAll();
   }, { capture: true, passive: true });
 
-  // A click can be a Send button clearing the field programmatically (no input
-  // event) — after a beat, compare the live text against what we last checked
-  // and treat any difference as input, so stale marks go away.
+  // --- text that changes with no input event to debounce off ---
+
+  // Compare the live text against what we last checked and treat any
+  // difference as input.
+  function revalidate(s) {
+    if (s.lastChecked == null || !s.el.isConnected) return;
+    const now = s.kind === 'field' ? s.el.value : LT.ceBuildMap(s.el).text;
+    if (now !== s.lastChecked) onInput(s);
+  }
+
+  // A click can be a Send button clearing the field programmatically — after a
+  // beat, revalidate everything live, so stale marks go away.
   let revalidateTimer = 0;
   function revalidateSoon() {
     clearTimeout(revalidateTimer);
     revalidateTimer = setTimeout(() => {
-      for (const s of states.values()) {
-        if (s.lastChecked == null || !s.el.isConnected) continue;
-        const now = s.kind === 'field' ? s.el.value : LT.ceBuildMap(s.el).text;
-        if (now !== s.lastChecked) onInput(s);
-      }
+      for (const s of states.values()) revalidate(s);
     }, FOCUS_CHECK_MS);
+  }
+
+  // A paste is only sometimes an input event. Editors that own their content
+  // (Slate, ProseMirror, Lexical, Quill) and fields whose framework handles
+  // onPaste cancel the event and insert the clipboard through their own model
+  // instead, and the DOM they then render carries no input event at all — the
+  // same way a cut or a drop they handle themselves doesn't. This listener
+  // runs before the page's own, so all it can do is arm a fallback and look
+  // again once that model has rendered. A native paste does fire input, and
+  // onInput disarms the fallback on the way through, so the common path keeps
+  // its usual debounce and nothing is scheduled twice.
+  function onClipboardEdit(e) {
+    const el = editableRoot(pathTarget(e));
+    if (!el) return;
+    const s = attach(el);
+    if (!s || s.clipboard) return;
+    s.clipboard = setTimeout(() => {
+      s.clipboard = 0;
+      // Nothing checked yet means the first check is still in flight and will
+      // land with the pre-paste text — queue another one behind it.
+      if (s.lastChecked == null) scheduleCheck(s, DEBOUNCE_MS);
+      else revalidate(s);
+    }, FOCUS_CHECK_MS);
+  }
+
+  for (const type of ['paste', 'cut', 'drop']) {
+    document.addEventListener(type, onClipboardEdit, true);
   }
 
   // Capture, like the others, so a page that stops click propagation on an

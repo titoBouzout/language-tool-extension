@@ -173,4 +173,41 @@
 <textarea id="long"></textarea>
 <p>stale-offset field:</p>
 <textarea id="stale"></textarea>
+<p>clipboard source (the smoke test types here and cuts, to load the clipboard):</p>
+<textarea id="clip-src"></textarea>
+<p>paste targets whose page cancels the paste and inserts it itself (React
+   onPaste, Slate/ProseMirror/Lexical — no input event is ever fired):</p>
+<textarea id="paste-ta"></textarea>
+<div id="paste-ce" contenteditable="true"><p>Start here.</p></div>
+<script>
+(function () {
+  // A controlled field: the framework owns `value`, so it cancels the paste
+  // and writes the result itself. Assigning the property fires no input event.
+  document.getElementById('paste-ta').addEventListener('paste', (e) => {
+    e.preventDefault();
+    const el = e.target;
+    const t = e.clipboardData.getData('text/plain');
+    const a = el.selectionStart, b = el.selectionEnd;
+    el.value = el.value.slice(0, a) + t + el.value.slice(b);
+    el.setSelectionRange(a + t.length, a + t.length);
+  });
+
+  // A rich editor: intercepts the paste to sanitize it, then writes the nodes
+  // into its own DOM. Again no input event.
+  document.getElementById('paste-ce').addEventListener('paste', (e) => {
+    e.preventDefault();
+    const t = e.clipboardData.getData('text/plain');
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    r.deleteContents();
+    const node = document.createTextNode(t);
+    r.insertNode(node);
+    r.setStartAfter(node);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  });
+})();
+</script>
 <div class="spacer"></div>
