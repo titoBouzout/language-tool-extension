@@ -18,6 +18,10 @@ LT.applyReplacement = function (s, match, value) {
 
   if (s.kind === 'field') {
     if (el.value.slice(start, end) !== expected) return stale();
+    // Tell the checker the exact shape of the edit before making it, so the
+    // input event it triggers re-anchors the other matches rather than
+    // clearing every underline in the field until the recheck lands.
+    s.splice = { start, end, value };
     el.focus();
     el.setSelectionRange(start, end);
     let ok = false;
@@ -69,6 +73,8 @@ LT.applyReplacement = function (s, match, value) {
   // edit first with a synthetic beforeinput carrying the exact target
   // range. A framework that owns the field preventDefaults it and applies
   // the change to its model itself; then there is nothing left for us to do.
+  s.splice = { start, end, value };
+
   const staticRange = new StaticRange({
     startContainer: range.startContainer,
     startOffset: range.startOffset,

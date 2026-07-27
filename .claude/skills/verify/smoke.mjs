@@ -178,6 +178,48 @@ await step('popup: Escape closes it', async () => {
   return 'text already clean, no popup to close';
 });
 
+// Regression: applying a suggestion used to blank the whole overlay and
+// repaint it only when the recheck came back, so every *other* underline in
+// the field blinked out for a round-trip. Sample the segment count each frame
+// while the correction settles — it must never drop below the matches that
+// survive the edit (here the first of three is replaced, by a suggestion one
+// character shorter, which also shifts the other two).
+await step('textarea: correcting one word keeps the other underlines painted', async () => {
+  await page.click('#ta');
+  await page.evaluate(() => document.getElementById('ta').select());
+  await page.keyboard.press('Backspace');
+  await page.type('#ta', 'A testt here, a bircycle and speling too.');
+  await sleep(2000);
+  const before = await segCount();
+  if (before !== 3) throw new Error(`expected 3 segments to start from, got ${before}`);
+
+  await page.evaluate(() => {
+    window.__samples = [];
+    window.__sampling = true;
+    const tick = () => {
+      window.__samples.push(document.querySelectorAll('.lt-ext-seg').length);
+      if (window.__sampling) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  await clickSeg({ id: 'ta', index: 0 });
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  const labels = await page.$$eval('.lt-ext-pop-item', els => els.map(e => e.textContent));
+  const pick = labels.find(l => l === 'test here') || labels[0];
+  await clickSuggestion(pick);
+  await sleep(2500);
+
+  const samples = await page.evaluate(() => { window.__sampling = false; return window.__samples; });
+  const low = Math.min(...samples);
+  if (low < 2) throw new Error(`overlay dipped to ${low} segments; samples: ${samples.join(',')}`);
+  const v = await page.$eval('#ta', el => el.value);
+  if (!v.startsWith('A test here,')) throw new Error(`value is ${JSON.stringify(v)}`);
+  const after = await segCount();
+  if (after !== 2) throw new Error(`expected 2 segments after the fix, got ${after}`);
+  return `3 → 2 segments, never below ${low} across ${samples.length} frames`;
+});
+
 // --- input flow + ignore word ---
 
 await step('input: underline + ignore word removes it', async () => {
@@ -345,6 +387,74 @@ await step('controlled editor (Slate-like, Discord): correction survives further
   if (!final.dom.includes('More.')) throw new Error('typing lost: ' + JSON.stringify(final));
   if (final.dom !== final.model) throw new Error('model/DOM drift: ' + JSON.stringify(final));
   return `dom: ${JSON.stringify(final.dom)}`;
+});
+
+// Same regression as the textarea one, on the timing that actually matters:
+// React commits the editor's re-render on a later task, so the nodes our
+// highlight ranges point at are replaced after the correction is applied.
+// Count ranges that are actually painted (still attached, non-empty rect) —
+// the registry keeps detached ones, which are invisible.
+await step('async controlled editor: correcting one word keeps the other highlights painted', async () => {
+  const painted = () => page.evaluate(() => {
+    const el = document.getElementById('ce4');
+    let n = 0;
+    for (const k of ['lt-ext-spell', 'lt-ext-grammar', 'lt-ext-style']) {
+      for (const r of CSS.highlights.get(k) || []) {
+        if (!el.contains(r.startContainer)) continue;
+        if (r.getBoundingClientRect().width > 0.5) n++;
+      }
+    }
+    return n;
+  });
+
+  await page.click('#ce4');
+  await sleep(2000); // check on focus
+  const before = await painted();
+  if (before !== 3) throw new Error(`expected 3 painted highlights, got ${before}`);
+
+  await page.evaluate(() => {
+    const el = document.getElementById('ce4');
+    window.__ceSamples = [];
+    window.__ceSampling = true;
+    const tick = () => {
+      let n = 0;
+      for (const k of ['lt-ext-spell', 'lt-ext-grammar', 'lt-ext-style']) {
+        for (const r of CSS.highlights.get(k) || []) {
+          if (el.contains(r.startContainer) && r.getBoundingClientRect().width > 0.5) n++;
+        }
+      }
+      window.__ceSamples.push(n);
+      if (window.__ceSampling) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  const pt = await page.evaluate(() => {
+    const t = document.querySelector('#ce4 p').firstChild;
+    const i = t.data.indexOf('testt');
+    if (i < 0) return null;
+    const r = document.createRange();
+    r.setStart(t, i); r.setEnd(t, i + 5);
+    const b = r.getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  });
+  if (!pt) throw new Error('word not found in editor');
+  await page.mouse.click(pt.x, pt.y);
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  const labels = await page.$$eval('.lt-ext-pop-item', els => els.map(e => e.textContent));
+  const pick = labels.find(l => l === 'test here') || labels[0];
+  await clickSuggestion(pick);
+  await sleep(2500);
+
+  const samples = await page.evaluate(() => { window.__ceSampling = false; return window.__ceSamples; });
+  const model = await page.evaluate(() => window.__ce4model());
+  if (model.includes('testt')) throw new Error('editor model not updated: ' + model);
+  const low = Math.min(...samples);
+  if (low < 2) throw new Error(`highlights dipped to ${low}; samples: ${samples.join(',')}`);
+  const after = await painted();
+  if (after !== 2) throw new Error(`expected 2 highlights after the fix, got ${after}`);
+  await shot('06-ce-async-corrected');
+  return `3 → 2 highlights, never below ${low} across ${samples.length} frames`;
 });
 
 // --- probes ---

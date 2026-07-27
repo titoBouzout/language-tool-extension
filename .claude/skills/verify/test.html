@@ -105,6 +105,66 @@
   window.__ce3model = () => model;
 })();
 </script>
+<p>async controlled editor (React-batched re-render, real Slate/Discord timing):</p>
+<div id="ce4" contenteditable="true"></div>
+<script>
+// Same contract as #ce3, but the re-render is committed on a later task the
+// way React schedules one. Everything an extension does synchronously in
+// response to the beforeinput it just dispatched still sees the OLD DOM, and
+// the commit then replaces the text nodes any Range points at.
+(function () {
+  const el = document.getElementById('ce4');
+  let model = 'A testt here, a bircycle and speling too.';
+  function render(caret) {
+    el.textContent = '';
+    const p = document.createElement('p');
+    p.textContent = model;
+    el.appendChild(p);
+    if (caret != null && p.firstChild) {
+      const s = window.getSelection();
+      const r = document.createRange();
+      r.setStart(p.firstChild, Math.min(caret, model.length));
+      r.collapse(true);
+      s.removeAllRanges();
+      s.addRange(r);
+    }
+  }
+  const commit = (caret) => setTimeout(() => render(caret), 0);
+  function toOffset(node, off) {
+    const t = el.querySelector('p')?.firstChild;
+    if (!t) return 0;
+    if (node === t) return Math.min(off, model.length);
+    if (node && node.nodeType === 1) return off === 0 ? 0 : model.length;
+    return 0;
+  }
+  el.addEventListener('beforeinput', (e) => {
+    e.preventDefault();
+    let start, end;
+    const tr = e.getTargetRanges();
+    if (tr.length) {
+      start = toOffset(tr[0].startContainer, tr[0].startOffset);
+      end = toOffset(tr[0].endContainer, tr[0].endOffset);
+    } else {
+      const s = window.getSelection();
+      start = toOffset(s.anchorNode, s.anchorOffset);
+      end = toOffset(s.focusNode, s.focusOffset);
+    }
+    if (start > end) [start, end] = [end, start];
+    if (e.inputType === 'insertText') {
+      const d = e.data || '';
+      model = model.slice(0, start) + d + model.slice(end);
+      commit(start + d.length);
+    } else if (e.inputType.startsWith('delete')) {
+      if (start === end) start = Math.max(0, start - 1);
+      model = model.slice(0, start) + model.slice(end);
+      commit(start);
+    }
+  });
+  el.addEventListener('input', () => commit());
+  render();
+  window.__ce4model = () => model;
+})();
+</script>
 <p>dialect field (auto-detect + preferredVariants):</p>
 <textarea id="dialect"></textarea>
 <p>picky-level field:</p>

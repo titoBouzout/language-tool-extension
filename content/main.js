@@ -1,8 +1,11 @@
-// Orchestration. No MutationObserver, no page-wide scanning: an element is
-// attached the first time it receives focus or dispatches an input event —
-// both observed once each, at the document, in the capture phase. Checks are
-// debounced off those input events, and only the handful of most-recently
-// edited elements keep live state.
+// Orchestration. No page-wide scanning and no standing MutationObserver: an
+// element is attached the first time it receives focus or dispatches an input
+// event — both observed once each, at the document, in the capture phase.
+// Checks are debounced off those input events, and only the handful of
+// most-recently edited elements keep live state. (One observer does get
+// attached, scoped to a single editable and for a few hundred ms at a time,
+// while waiting for a controlled editor to commit an edit — see
+// watchForSplice.)
 const LT = (globalThis.LT ??= {});
 
 // Settings decide whether we may attach at all (global switch, per-site and
@@ -21,6 +24,7 @@ await LT.settingsReady;
   const MAX_TEXT = 20000; // check the tail of longer texts (where typing happens)
   const BOUNDARY_SCAN = 500;  // how far past the cut to look for a clean break
   const FRAGMENT_GUARD = 200; // matches dropped when no clean break was found
+  const REANCHOR_MS = 800;    // how long to wait for an editor to commit our edit
 
   const states = new Map(); // el -> state, in LRU order
   let contextDead = false;
@@ -116,6 +120,9 @@ await LT.settingsReady;
       map: null,      // ce: text/node map the matches refer to
       seq: 0, timer: 0, retryMs: 0, lastChecked: null, detectedLanguage: null,
       raf: 0, ro: null,
+      splice: null,   // edit we are about to make ourselves (see reanchor)
+      recheck: false, // ask the server even though lastChecked matches
+      mo: null, moTimer: 0, // waiting for a controlled editor to apply that edit
     };
 
     if (kind === 'field') {
@@ -136,6 +143,7 @@ await LT.settingsReady;
     clearTimeout(s.timer);
     s.seq++; // invalidate in-flight checks
     s.ro?.disconnect();
+    stopWatching(s);
     if (s.raf) cancelAnimationFrame(s.raf);
     LT.fieldOverlay.remove(s);
     LT.ceClear(s);
@@ -155,11 +163,78 @@ await LT.settingsReady;
     s.timer = setTimeout(() => runCheck(s), delay);
   }
 
+  // Applying a suggestion is the one edit whose effect on the text we know
+  // up front: `value` spliced over [start, end). Shifting the matches that
+  // survive it keeps every other underline on screen — and drops the
+  // corrected one at once — instead of blanking the field and painting the
+  // same marks again a round-trip later. False when the live text isn't what
+  // we predicted (the page rewrote it, or applied the edit asynchronously);
+  // the caller then falls back to clearing.
+  function reanchor(s, { start, end, value }) {
+    if (s.lastChecked == null) return false;
+    const next = s.lastChecked.slice(0, start) + value + s.lastChecked.slice(end);
+    if (s.kind === 'ce') LT.ceInvalidateMap();
+    const { text, map } = textOf(s);
+    if (text !== next) return false;
+    const delta = value.length - (end - start);
+    s.lastChecked = next;
+    s.map = map;
+    s.raw = s.raw.flatMap(m =>
+      m.offset + m.length <= start ? [m] :
+      m.offset >= end ? [{ ...m, offset: m.offset + delta }] :
+      []); // touches the replaced span: whatever it flagged is gone
+    // These offsets are guesswork until the server has seen the new text, and
+    // lastChecked now equals it — force the pending check through anyway.
+    s.recheck = true;
+    applyMatches(s);
+    return true;
+  }
+
+  function stopWatching(s) {
+    s.mo?.disconnect();
+    s.mo = null;
+    clearTimeout(s.moTimer);
+    s.moTimer = 0;
+  }
+
+  // A controlled editor (Slate — Discord, Lexical, Draft) doesn't apply the
+  // edit when we announce it: it takes it into its own model and re-renders
+  // from there, in React's case a tick or two later. So the re-anchor above
+  // ran against the pre-edit DOM and failed — and once that render lands it
+  // replaces the very text nodes the highlight ranges point at, which is what
+  // makes every mark in the field disappear until the recheck comes back.
+  // Wait for the text we predicted to show up instead. MutationObserver
+  // callbacks run as microtasks, so re-anchoring here happens in the same
+  // frame as the editor's own render and nothing blinks.
+  function watchForSplice(s, splice) {
+    stopWatching(s);
+    const from = s.lastChecked;
+    const attempt = () => {
+      // A real check landing first supersedes what we predicted.
+      if (s.lastChecked !== from || !s.el.isConnected || reanchor(s, splice)) stopWatching(s);
+    };
+    s.mo = new MutationObserver(attempt);
+    s.mo.observe(s.el, { subtree: true, childList: true, characterData: true });
+    // Editor did something else with the edit: give up and let the recheck
+    // repaint from the server.
+    s.moTimer = setTimeout(() => stopWatching(s), REANCHOR_MS);
+  }
+
   function onInput(s, e) {
     LT.closePopup();
-    // Field underlines are positioned against the old text — hide them until
-    // the next check. CE ranges are live and track simple edits, keep them.
-    if (s.kind === 'field') LT.fieldOverlay.clear(s);
+    const splice = s.splice;
+    s.splice = null;
+    let kept = false;
+    if (splice) {
+      kept = reanchor(s, splice);
+      if (!kept && s.kind === 'ce') watchForSplice(s, splice);
+    }
+    // Field underlines are positioned against the text they were measured
+    // against — hide them until the next check once it changes. CE ranges are
+    // live and track simple edits, keep them.
+    if (!kept && s.kind === 'field' && s.el.value !== s.lastChecked) {
+      LT.fieldOverlay.clear(s);
+    }
     // Mid-IME-composition text is half-typed by definition; wait for the
     // committing input event (isComposing: false) before checking.
     if (e?.isComposing) {
@@ -213,7 +288,7 @@ await LT.settingsReady;
     if (contextDead) return;
     if (!s.el.isConnected) { dispose(s); return; }
     const { text, map } = textOf(s);
-    if (text === s.lastChecked) {
+    if (text === s.lastChecked && !s.recheck) {
       // The events that led here may net out to no text change (undo, a
       // framework re-render with identical text) — but they already hid the
       // field overlay (onInput clears it) or replaced the CE text nodes the
@@ -222,6 +297,7 @@ await LT.settingsReady;
       applyMatches(s);
       return;
     }
+    s.recheck = false;
 
     const seq = ++s.seq;
     if (!text.trim()) {

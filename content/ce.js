@@ -72,6 +72,11 @@ const LT = (globalThis.LT ??= {});
     return map;
   };
 
+  // An edit we apply ourselves mutates the DOM inside the very task that
+  // built the map (and the input event it fires is dispatched synchronously),
+  // so re-reading the text right after it needs the memo dropped first.
+  LT.ceInvalidateMap = function () { memo = null; };
+
   // First entry that could contain `pos`. entries are sorted and
   // non-overlapping, so both `start` and `start + len` are non-decreasing.
   function posToNodeOffset(map, pos) {
