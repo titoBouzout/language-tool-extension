@@ -1,12 +1,13 @@
 ---
 name: verify
-description: Drive the extension end-to-end in headless Chrome for Testing against the local LanguageTool server and assert the check → underline → popup → replace flows.
+description: Drive the extension end-to-end in headless Chrome for Testing (and, for the Gecko-specific parts, real Firefox) against the local LanguageTool server and assert the check → underline → popup → replace flows.
 ---
 
 # Verify the extension
 
 ```bash
-node .claude/skills/verify/smoke.mjs [screenshot-dir]
+node .claude/skills/verify/smoke.mjs [screenshot-dir]          # Chrome, full suite
+npm run verify:firefox                                          # Firefox, Gecko-specific parts
 ```
 
 Exit 0 = all steps passed; prints one PASS/FAIL line per step plus collected
@@ -19,6 +20,9 @@ page console errors, and writes screenshots (underlines, popups, prefs page).
 - Chrome for Testing in puppeteer's cache. One-time:
   `npx @puppeteer/browsers install chrome@stable --path ~/.cache/puppeteer`
 - `npm install` (puppeteer-core is a devDependency).
+- For the Firefox run: a `firefox` on PATH (or `FIREFOX_BIN=…`). It drives
+  `dist/firefox`, so `npm run build:firefox` must have run — the npm script
+  does it.
 
 ## Gotchas learned the hard way
 
@@ -53,3 +57,26 @@ page console errors, and writes screenshots (underlines, popups, prefs page).
 - Server-option steps (preferredVariants, picky) drive `chrome.storage` from
   the prefs page and rely on the content script's own re-check on change;
   allow ~2.5s to settle.
+
+## Firefox-specific gotchas
+
+- **The extension API binding cannot be called `chrome`.** Every file takes it
+  as `const ext = globalThis.browser ?? globalThis.chrome` — Firefox only
+  returns promises from `browser`, its `chrome` alias is callback-only. Naming
+  the binding `chrome` looks tidier and breaks Chrome outright: a top-level
+  lexical declaration collides with the non-configurable global, so the
+  service worker and the prefs page fail to parse and *every* step fails at
+  once with no console error to show for it.
+- **WebDriver BiDi refuses to navigate a tab to `moz-extension:`**
+  ("unsupported operation"), and web content may not link to one either
+  (`Location.href setter: Access … denied`) — extension pages are not
+  web-accessible. The prefs page can only be opened from inside the extension,
+  so the harness installs a throwaway copy of `dist/firefox` with one appended
+  `ext.tabs.create(…)` line in `background.js`.
+- Puppeteer reports an extension tab's URL as `about:blank`; find it by
+  evaluating `location.href` in each page.
+- `browser.installExtension()` takes the built directory, and Firefox 127+
+  grants the manifest's host permissions on install, so no permission prompt
+  has to be dismissed.
+- Each run is a fresh temp profile, so `storage.sync` starts empty — the same
+  assumption the Chrome suite makes.

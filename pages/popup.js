@@ -4,6 +4,9 @@
 // their own onChanged listener.
 'use strict';
 
+// See background.js: Firefox's promise-based namespace is `browser`.
+const ext = globalThis.browser ?? globalThis.chrome;
+
 const SYNC_DEFAULTS = {
   serverUrl: 'http://localhost:8010',
   language: 'auto',
@@ -52,7 +55,7 @@ function normalizeServer(url) {
 // user action, so a save really can fail. Say so instead of looking saved.
 async function save(area, items) {
   try {
-    await chrome.storage[area].set(items);
+    await ext.storage[area].set(items);
     $('error').hidden = true;
     return true;
   } catch (err) {
@@ -136,7 +139,7 @@ function syncVariantsVisibility() {
 async function loadLanguages() {
   setStatus('', 'Checking server…');
   try {
-    const resp = await chrome.runtime.sendMessage({ type: 'getLanguages', serverUrl: settings.serverUrl });
+    const resp = await ext.runtime.sendMessage({ type: 'getLanguages', serverUrl: settings.serverUrl });
     if (!resp || resp.error) throw new Error(resp?.error || 'No response');
     renderLanguages(resp.languages);
     setStatus('ok', 'Server reachable');
@@ -262,7 +265,7 @@ $('site').addEventListener('change', () => {
   save('sync', { disabledSites: on ? [...list, siteHost] : list });
 });
 
-chrome.storage.onChanged.addListener((changes, area) => {
+ext.storage.onChanged.addListener((changes, area) => {
   const defaults = area === 'sync' ? SYNC_DEFAULTS : area === 'local' ? LOCAL_DEFAULTS : null;
   if (!defaults) return;
   let reloadLangs = false;
@@ -288,7 +291,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // meaningful host, so the row stays hidden there.
 async function currentHost() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
     if (!tab?.url) return '';
     const u = new URL(tab.url);
     return /^https?:$/.test(u.protocol) ? u.hostname : '';
@@ -299,8 +302,8 @@ async function currentHost() {
 
 (async () => {
   const [sync, local, host] = await Promise.all([
-    chrome.storage.sync.get(SYNC_DEFAULTS),
-    chrome.storage.local.get(LOCAL_DEFAULTS),
+    ext.storage.sync.get(SYNC_DEFAULTS),
+    ext.storage.local.get(LOCAL_DEFAULTS),
     currentHost(),
   ]);
   Object.assign(settings, sync, local);

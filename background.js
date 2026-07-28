@@ -2,6 +2,14 @@
 // popup to the LanguageTool server, so pages never talk to it directly.
 'use strict';
 
+// Firefox puts the promise-based API on `browser`; its `chrome` alias is
+// callback-only, so awaiting a `chrome.*` call there yields undefined. Same
+// line in every file that touches the extension APIs. It cannot be named
+// `chrome`: a top-level lexical declaration collides with the non-configurable
+// global of that name, and the classic scripts (this one, pages/popup.js)
+// would fail to parse.
+const ext = globalThis.browser ?? globalThis.chrome;
+
 const DEFAULT_SERVER = 'http://localhost:8010';
 
 // Accepts whatever the user typed ("http://localhost:8010/",
@@ -94,7 +102,7 @@ async function handleLanguages(req) {
 // the body. Ignored words are filtered in the content script, so they never
 // reach the server. Server URL changes are keyed too. Nothing to invalidate.
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+ext.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request?.type === 'checkText') {
     handleCheck(request).then(sendResponse);
     return true;

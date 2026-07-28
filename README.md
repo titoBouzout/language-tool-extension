@@ -1,7 +1,7 @@
 # LanguageTool Spellcheck
 
-A Chrome extension that spell- and grammar-checks what you type on any page,
-using **your own LanguageTool server** — by default one running on
+A Chrome and Firefox extension that spell- and grammar-checks what you type on
+any page, using **your own LanguageTool server** — by default one running on
 `http://localhost:8010`. Nothing is sent to a cloud service, no account, no
 telemetry.
 
@@ -13,8 +13,9 @@ style and register.
 
 ## Requirements
 
-- Chrome 119 or newer (the contenteditable support needs the CSS Custom
-  Highlight API).
+- Chrome 119 or newer, or Firefox 128 or newer. contenteditable support needs
+  the CSS Custom Highlight API, which Firefox only shipped in 140; below that
+  everything else still works, rich editors just aren't underlined.
 - A LanguageTool server you can reach over HTTP.
 
 ## Setting up the server
@@ -39,14 +40,30 @@ curl -sf localhost:8010/v2/languages | head -c 200
 ```
 
 Any port works — set it under **Server URL** in the extension's preferences.
-Requests are made by the extension's service worker, which holds the host
+Requests are made by the extension's background worker, which holds the host
 permission, so the server does not need CORS flags.
 
 ## Installing the extension
 
+In Chrome:
+
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
 3. **Load unpacked** → pick this directory.
+
+In Firefox, build the Gecko-flavoured copy first — Firefox has no extension
+service workers and needs its own `manifest.json`, which is the only difference
+between the two:
+
+```bash
+npm run build:firefox
+```
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. **Load Temporary Add-on** → pick `dist/firefox/manifest.json`.
+
+Temporary add-ons are dropped when Firefox exits; re-run the build and load it
+again after changing the sources.
 
 ## Using it
 
@@ -66,9 +83,9 @@ The toolbar icon opens preferences: the global on/off switch, "Disable on
 language for false-friend detection, picky mode, and the lists of ignored
 words, disabled rules and disabled fields — each removable.
 
-Preferences live in `chrome.storage.sync` and follow your Chrome profile. The
+Preferences live in `storage.sync` and follow your browser profile. The
 per-field disable list is keyed by hostname and can grow without bound, so it
-lives in `chrome.storage.local` instead.
+lives in `storage.local` instead.
 
 ## Privacy
 
@@ -83,7 +100,7 @@ else. Beyond that:
 - Ignored words are filtered inside the page — they never reach the server.
 - Very long texts are only checked from a boundary near the last 20 000
   characters, which is where editing happens.
-- The service worker keeps a small in-memory cache (30 entries, texts up to
+- The background worker keeps a small in-memory cache (30 entries, texts up to
   10 000 characters) so refocusing a field or a settings change doesn't re-ask
   the server. It is gone when the worker is.
 
@@ -104,7 +121,7 @@ the eight most-recently-edited elements keep live state.
 
 | File | Role |
 | --- | --- |
-| `background.js` | Service worker; the only thing that talks to the LanguageTool server. Collapses duplicate requests and caches results. |
+| `background.js` | Service worker in Chrome, event page in Firefox; the only thing that talks to the LanguageTool server. Collapses duplicate requests and caches results. |
 | `content/boot.js` | The injected entry point. Notices editables, imports the rest. |
 | `content/index.js` | Module entry point; imports the modules below in dependency order. |
 | `content/settings.js` | Shared `LT` namespace and storage-backed settings. |
@@ -132,8 +149,14 @@ Two things it goes out of its way to do:
 
 ## Development
 
-There are no build steps: load the directory unpacked and reload the extension
-after an edit.
+The sources are the Chrome extension as it ships — no build step there, just
+load the directory unpacked and reload after an edit. `npm run build:firefox`
+copies them to `dist/firefox` with a translated manifest (event page instead of
+a service worker, a Gecko add-on id, no `minimum_chrome_version`); nothing in
+`content/`, `pages/` or `background.js` is rewritten. The one thing the code
+does for Firefox is take the extension API from `browser` when it exists, since
+Firefox only returns promises from that namespace and the `chrome` alias is
+callback-only.
 
 An end-to-end smoke test drives the real extension in headless Chrome for
 Testing against a running LanguageTool server, and asserts the whole
@@ -145,9 +168,18 @@ npx @puppeteer/browsers install chrome@stable --path ~/.cache/puppeteer  # once
 npm run verify
 ```
 
-It prints one PASS/FAIL line per step and writes screenshots. Branded Google
-Chrome cannot load unpacked extensions since v137, so this needs Chrome for
-Testing. See `.claude/skills/verify/SKILL.md` for the rest of the gotchas.
+A shorter suite runs the same flows in real Firefox — the parts that differ
+there: the promise namespace, the event page, the dynamic import of a
+`moz-extension:` module, and the prefs page.
+
+```bash
+npm run verify:firefox   # builds dist/firefox first; needs firefox on PATH
+```
+
+Both print one PASS/FAIL line per step and write screenshots. Branded Google
+Chrome cannot load unpacked extensions since v137, so the Chrome run needs
+Chrome for Testing. See `.claude/skills/verify/SKILL.md` for the rest of the
+gotchas.
 
 ## License
 

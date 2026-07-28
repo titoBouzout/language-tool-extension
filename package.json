@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "verify": "node .claude/skills/verify/smoke.mjs"
+    "build:firefox": "node tools/build-firefox.mjs",
+    "verify": "node .claude/skills/verify/smoke.mjs",
+    "verify:firefox": "node tools/build-firefox.mjs && node .claude/skills/verify/smoke-firefox.mjs"
   },
   "keywords": [],
   "author": "",

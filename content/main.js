@@ -8,6 +8,9 @@
 // watchForSplice.)
 const LT = (globalThis.LT ??= {});
 
+// See background.js: Firefox's promise-based namespace is `browser`.
+const ext = globalThis.browser ?? globalThis.chrome;
+
 // Settings decide whether we may attach at all (global switch, per-site and
 // per-field opt-outs) and which server to ask, so nothing happens until the
 // first read resolves. boot.js keeps collecting candidates in the meantime.
@@ -282,7 +285,7 @@ await LT.settingsReady;
   // tab for as long as they stay open.
   function orphaned(err) {
     let alive = false;
-    try { alive = !!chrome.runtime?.id; } catch { /* invalidated */ }
+    try { alive = !!ext.runtime?.id; } catch { /* invalidated */ }
     if (alive && !/context invalidated/i.test(err?.message || '')) return false;
     contextDead = true;
     LT.closePopup();

@@ -5,6 +5,8 @@
 'use strict';
 
 (() => {
+  // See background.js: Firefox's promise-based namespace is `browser`.
+  const ext = globalThis.browser ?? globalThis.chrome;
   const LT = (globalThis.LT ??= {});
   if (LT.booted) return;
   LT.booted = true;
@@ -28,7 +30,7 @@
     if (loading) return;
     loading = true;
     try {
-      import(chrome.runtime.getURL('content/index.js')).catch(giveUpOrRetry);
+      import(ext.runtime.getURL('content/index.js')).catch(giveUpOrRetry);
     } catch {
       giveUpOrRetry();
     }
@@ -39,7 +41,7 @@
   // this frame — never recovers, so detach instead of retrying forever.
   function giveUpOrRetry() {
     let alive = false;
-    try { alive = !!chrome.runtime?.id; } catch { /* invalidated */ }
+    try { alive = !!ext.runtime?.id; } catch { /* invalidated */ }
     if (alive) loading = false; else LT.bootDone();
   }
 

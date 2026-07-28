@@ -6,6 +6,9 @@
 // chrome.storage.local.
 const LT = (globalThis.LT ??= {});
 
+// See background.js: Firefox's promise-based namespace is `browser`.
+const ext = globalThis.browser ?? globalThis.chrome;
+
 const SYNC_DEFAULTS = {
   serverUrl: 'http://localhost:8010',
   language: 'auto',
@@ -39,7 +42,7 @@ LT.emitSettings = (keys) => {
 LT.saveError = null;
 LT.save = async function (area, items) {
   try {
-    await chrome.storage[area].set(items);
+    await ext.storage[area].set(items);
     LT.saveError = null;
     return true;
   } catch (err) {
@@ -67,13 +70,13 @@ LT.siteDisabled = () =>
 // knows the configured server, language and disable lists.
 LT.settingsReady = (async () => {
   const [sync, local] = await Promise.all([
-    chrome.storage.sync.get(SYNC_DEFAULTS),
-    chrome.storage.local.get(LOCAL_DEFAULTS),
+    ext.storage.sync.get(SYNC_DEFAULTS),
+    ext.storage.local.get(LOCAL_DEFAULTS),
   ]);
   Object.assign(LT.settings, sync, local);
 })().catch(() => { /* orphaned context: fall back to defaults */ });
 
-chrome.storage.onChanged.addListener((changes, area) => {
+ext.storage.onChanged.addListener((changes, area) => {
   const defaults = area === 'sync' ? SYNC_DEFAULTS : area === 'local' ? LOCAL_DEFAULTS : null;
   if (!defaults) return;
   const keys = [];

@@ -2,11 +2,14 @@
 // match objects.
 const LT = (globalThis.LT ??= {});
 
+// See background.js: Firefox's promise-based namespace is `browser`.
+const ext = globalThis.browser ?? globalThis.chrome;
+
 // Resolves to { matches, language } or throws.
 LT.checkText = async function (text) {
   const s = LT.settings;
   const language = s.language || 'auto';
-  const resp = await chrome.runtime.sendMessage({
+  const resp = await ext.runtime.sendMessage({
     type: 'checkText',
     text,
     serverUrl: s.serverUrl,
