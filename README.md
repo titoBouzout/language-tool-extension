@@ -186,6 +186,15 @@ Chrome cannot load unpacked extensions since v137, so the Chrome run needs
 Chrome for Testing. See `.claude/skills/verify/SKILL.md` for the rest of the
 gotchas.
 
+## Publishing
+
+`marketplace/` holds everything the Chrome Web Store, Edge Add-ons and AMO ask
+for: the listing copy, the privacy policy, the per-store form fields and
+reviewer notes, and the store-sized screenshots and promo tiles.
+`node marketplace/shots.mjs` regenerates the images by driving the real
+extension against a real server, the same way the verify skill does. Start at
+[marketplace/README.md](marketplace/README.md).
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).

@@ -1,0 +1,289 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>demo</title>
+<!--
+  Staged page for the store screenshots (marketplace/shots.mjs). Ordinary
+  light-themed web UI, sized for a 1280x800 viewport; the scene is picked with
+  ?scene=mail|doc|comment so each shot frames only what it needs.
+
+  Nothing here is extension code — it exists purely to give the extension a
+  realistic field to underline. The mail composer is docked bottom-right on
+  purpose: the suggestion popup always opens above the click, and there it
+  opens over the message list instead of over the text it is talking about.
+-->
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #202124;
+    background: #f6f8fc;
+  }
+  .chrome {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e3e6ea;
+  }
+  .chrome .brand { font-weight: 650; font-size: 15px; letter-spacing: -0.2px; }
+  .chrome .search {
+    flex: 1;
+    max-width: 520px;
+    background: #f1f3f4;
+    border-radius: 999px;
+    padding: 8px 14px;
+    color: #80868b;
+    font-size: 13px;
+  }
+  .chrome .avatar {
+    margin-left: auto;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: #d7e3fc; color: #1a4b9c;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 650;
+  }
+  .shell { display: flex; min-height: calc(100vh - 55px); }
+  .side { width: 200px; padding: 18px 12px; flex: none; }
+  .side a {
+    display: flex; gap: 10px; align-items: center;
+    padding: 8px 12px; border-radius: 999px;
+    color: #3c4043; text-decoration: none; font-size: 13.5px;
+  }
+  .side a.on { background: #d3e3fd; color: #041e49; font-weight: 600; }
+  .side .count { margin-left: auto; color: #5f6368; font-size: 12px; }
+  .side h3 {
+    margin: 6px 12px 8px; font: 600 11px/1 system-ui, sans-serif;
+    letter-spacing: .08em; text-transform: uppercase; color: #9aa0a6;
+  }
+  .stage { flex: 1; min-width: 0; padding: 20px 28px 40px 8px; }
+
+  .card {
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(60,64,67,.08), 0 4px 14px rgba(60,64,67,.06);
+    overflow: hidden;
+  }
+  .card > header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 18px;
+    border-bottom: 1px solid #eceff2;
+    font-size: 13px; font-weight: 600; color: #3c4043;
+  }
+  .row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 9px 18px;
+    border-bottom: 1px solid #f1f3f4;
+    font-size: 13.5px; color: #3c4043;
+  }
+  .row .k { width: 52px; color: #80868b; flex: none; }
+  .pill {
+    background: #e8f0fe; color: #1a4b9c;
+    border-radius: 999px; padding: 3px 10px; font-size: 12.5px;
+  }
+  textarea, [contenteditable] {
+    display: block; width: 100%;
+    border: 0; outline: 0; resize: none;
+    padding: 16px 18px;
+    font: 15px/1.7 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #202124; background: #fff;
+  }
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 18px; border-top: 1px solid #eceff2; background: #fbfcfd;
+  }
+  .btn {
+    background: #0b57d0; color: #fff; border: 0; border-radius: 999px;
+    padding: 8px 20px; font: 600 13.5px system-ui, sans-serif;
+  }
+  .btn.ghost { background: transparent; color: #5f6368; font-weight: 500; }
+
+  /* message list behind the composer */
+  .list { border-radius: 14px; overflow: hidden; border: 1px solid #e3e6ea; background: #fff; }
+  .msg {
+    display: flex; gap: 12px; align-items: baseline;
+    padding: 13px 18px; border-bottom: 1px solid #f1f3f4; font-size: 13.5px;
+  }
+  .msg:last-child { border-bottom: 0; }
+  .msg .from { width: 150px; flex: none; font-weight: 600; color: #202124; }
+  .msg .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg .sub span { color: #80868b; font-weight: 400; }
+  .msg .at { margin-left: auto; color: #80868b; font-size: 12px; flex: none; }
+  .msg.read .from { font-weight: 400; color: #5f6368; }
+  .msg.read .sub { color: #5f6368; }
+
+  /* docked composer */
+  .compose {
+    position: fixed; right: 26px; bottom: 0; width: 620px;
+    background: #fff; border: 1px solid #dadce0;
+    border-radius: 12px 12px 0 0; overflow: hidden;
+    box-shadow: 0 -2px 10px rgba(60,64,67,.10), 0 8px 30px rgba(60,64,67,.18);
+  }
+  .compose > header {
+    background: #f2f6fc; border-bottom: 1px solid #e3e6ea;
+    padding: 10px 16px; font-size: 13px; font-weight: 600; color: #202124;
+  }
+
+  h1.doc {
+    margin: 0; padding: 24px 18px 0;
+    font: 700 26px/1.25 Georgia, "Times New Roman", serif; color: #16181c;
+  }
+  .byline { padding: 6px 18px 0; color: #80868b; font-size: 12.5px; }
+  [contenteditable] p { margin: 0 0 14px; }
+  [contenteditable] h2 { font: 650 17px/1.4 system-ui, sans-serif; margin: 20px 0 8px; }
+
+  .post { display: flex; gap: 12px; padding: 15px 18px; border-bottom: 1px solid #f1f3f4; }
+  .post .pic { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #e6eaf0; }
+  .post .who { font-size: 13px; font-weight: 650; }
+  .post .when { font-size: 12px; color: #9aa0a6; font-weight: 400; margin-left: 6px; }
+  .post p { margin: 4px 0 0; font-size: 14px; color: #3c4043; }
+  .composer { border-bottom: 0; background: #fbfcfd; }
+  .hint { margin: 12px 4px 0; font-size: 12px; color: #9aa0a6; }
+</style>
+
+<div class="chrome">
+  <span class="brand" id="brand"></span>
+  <div class="search" id="search"></div>
+  <div class="avatar">DR</div>
+</div>
+
+<div class="shell">
+  <nav class="side" id="side"></nav>
+  <div class="stage" id="stage"></div>
+</div>
+
+<script>
+const scene = new URLSearchParams(location.search).get('scene') || 'mail';
+
+const inbox = [
+  ['Priya Nandakumar', 'CI runners are swapping again', 'the compression step hangs about half the time', '09:12'],
+  ['Dana Reyes', 'Launch notes — draft 2', 'attached, mostly the section two screenshots', '08:47'],
+  ['builds@', 'Nightly: 1 failed, 214 passed', 'assets/compress timed out after 900s', '04:02'],
+  ['Marco Feld', 'Re: pricing table', 'we agreed to drop per-seat, right?', 'Yesterday'],
+  ['Legal', 'Trademark line for the release post', 'one small change to the footer', 'Yesterday'],
+  ['Anja Køster', 'Notes from the retro', 'three things worth keeping, one to drop', 'Tue'],
+  ['Sam Oyelaran', 'Docs review — onboarding page', 'left comments on the last two sections', 'Tue'],
+  ['status@', 'Weekly uptime digest', '99.98% across all regions, one blip on Sunday', 'Mon'],
+  ['Ines Broch', 'Re: contractor invoice', 'approved, finance has it now', 'Mon'],
+  ['Design', 'New icon set is on the shared drive', 'SVGs plus the 128px exports', 'Sun'],
+  ['Priya Nandakumar', 'Runner image bump', 'pinned the toolchain, nightly is green again', 'Sun'],
+  ['Marco Feld', 'Lunch Thursday?', 'the place near the office reopened', 'Fri'],
+];
+
+const scenes = {
+  // A plain <textarea> — the overlay path: underlines are painted in the
+  // extension's own layer, measured against a hidden mirror of the field.
+  mail: {
+    brand: 'Mail', search: 'Search mail',
+    side: `<a class="on" href="#">Inbox <span class="count">12</span></a>
+      <a href="#">Starred</a><a href="#">Snoozed</a><a href="#">Sent</a>
+      <a href="#">Drafts <span class="count">3</span></a><a href="#">Archive</a>`,
+    stage: `
+      <div class="list">${inbox.map(([f, s, p, t], i) => `
+        <div class="msg${i > 1 ? ' read' : ''}">
+          <span class="from">${f}</span>
+          <span class="sub">${s} <span>— ${p}</span></span>
+          <span class="at">${t}</span>
+        </div>`).join('')}
+      </div>
+      <div class="compose">
+        <header>New message</header>
+        <div class="row"><span class="k">To</span><span class="pill">Dana Reyes</span></div>
+        <div class="row"><span class="k">Subject</span><span>Re: Launch notes — draft 2</span></div>
+        <textarea id="field" rows="7" spellcheck="false"></textarea>
+        <div class="toolbar">
+          <button class="btn">Send</button>
+          <button class="btn ghost">Save draft</button>
+        </div>
+      </div>`,
+  },
+
+  // contenteditable — the CSS Custom Highlight API path, so the editor's own
+  // DOM is never touched.
+  doc: {
+    brand: 'Notes', search: 'Search documents',
+    side: `<h3>Release</h3>
+      <a class="on" href="#">Why we moved the release</a>
+      <a href="#">Runner image notes</a>
+      <a href="#">Postmortem template</a>
+      <h3>Recent</h3>
+      <a href="#">Retro — May</a>
+      <a href="#">Pricing page copy</a>`,
+    stage: `
+      <div class="card">
+        <header>Draft · saved just now</header>
+        <h1 class="doc">Why we moved the release to Tuesday</h1>
+        <div class="byline">Dana Reyes · 4 min read</div>
+        <div id="field" contenteditable="true"></div>
+        <div class="toolbar">
+          <button class="btn">Publish</button>
+          <button class="btn ghost">Preview</button>
+        </div>
+      </div>`,
+  },
+
+  // A short comment box near the bottom of a thread.
+  comment: {
+    brand: 'Threads', search: 'Search this project',
+    side: `<h3>Project</h3>
+      <a class="on" href="#">Discussions <span class="count">8</span></a>
+      <a href="#">Issues <span class="count">31</span></a>
+      <a href="#">Pull requests</a><a href="#">Actions</a><a href="#">Wiki</a>`,
+    stage: `
+      <div class="card">
+        <header>CI runners are swapping again · #482</header>
+        <div class="post">
+          <div class="pic"></div>
+          <div>
+            <div class="who">Priya Nandakumar<span class="when">2 hours ago</span></div>
+            <p>Has anyone else seen the build hang on the asset step? It only happens
+               on the CI runners, never locally, and only once the cache is warm.</p>
+          </div>
+        </div>
+        <div class="post">
+          <div class="pic"></div>
+          <div>
+            <div class="who">Marco Feld<span class="when">an hour ago</span></div>
+            <p>Same shape as #451. That one turned out to be memory pressure —
+               the compressor forks per asset and the runner has 2 GB.</p>
+          </div>
+        </div>
+        <div class="post">
+          <div class="pic"></div>
+          <div>
+            <div class="who">Sam Oyelaran<span class="when">44 minutes ago</span></div>
+            <p>The runner spec did change last week — we moved the pool to the
+               smaller instance type to cut the bill. That would explain why it
+               only shows up on CI.</p>
+          </div>
+        </div>
+        <div class="post">
+          <div class="pic"></div>
+          <div>
+            <div class="who">Priya Nandakumar<span class="when">20 minutes ago</span></div>
+            <p>Pinning the toolchain in the runner image made the nightly green
+               again, so I think that is the fix. I will open a PR to cap the
+               compressor's worker count as well.</p>
+          </div>
+        </div>
+        <div class="post composer">
+          <div class="pic"></div>
+          <div style="flex:1">
+            <div class="who">Write a reply</div>
+            <textarea id="field" rows="4" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Markdown supported. Be kind.</p>`,
+  },
+};
+
+const s = scenes[scene] || scenes.mail;
+document.getElementById('brand').textContent = s.brand;
+document.getElementById('search').textContent = s.search;
+document.getElementById('side').innerHTML = s.side;
+document.getElementById('stage').innerHTML = s.stage;
+</script>

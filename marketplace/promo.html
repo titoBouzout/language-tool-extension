@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>promo</title>
+<!--
+  Promo graphics, rendered at exact store sizes by marketplace/shots.mjs:
+  440x280 (Chrome small tile), 1400x560 (Chrome marquee), 300x300 (Edge logo).
+  ?variant= picks the layout; the size comes from the viewport, so each one is
+  laid out for its own canvas rather than scaled.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(115% 130% at 10% -10%, #31445c 0%, #1c2126 52%, #14171b 100%);
+    color: #e8eaed;
+    font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid;
+    place-items: center;
+  }
+  svg { display: block; }
+  h1 { margin: 0; font-weight: 640; letter-spacing: -0.02em; line-height: 1.1; }
+  p { margin: 0; }
+  .tag { color: #9aa0a6; }
+  .stack { display: grid; justify-items: center; text-align: center; }
+  .beside { display: grid; grid-template-columns: auto 1fr; align-items: center; }
+  .sample { color: #cdd1d5; white-space: nowrap; }
+  .sample u {
+    text-decoration: none;
+    border-bottom: 2px solid;
+    border-radius: 1px;
+    padding-bottom: 2px;
+  }
+  .spell   { border-color: #ff6259; background: rgba(255, 98, 89, .12); }
+  .grammar { border-color: #fbbc04; background: rgba(251, 188, 4, .12); }
+  .style   { border-color: #6aa9ff; background: rgba(106, 169, 255, .12); }
+</style>
+<body></body>
+<script>
+const q = new URLSearchParams(location.search);
+const variant = q.get('variant') || 'tile';
+
+const check = (px, stroke) => `<svg width="${px}" height="${px}" viewBox="0 0 128 128" aria-hidden="true">
+  <path d="M26 68 L52 94 L102 34" fill="none" stroke="#12a05c" stroke-width="${stroke}"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const layouts = {
+  // Edge Add-ons store logo, 300x300: mark and wordmark, nothing else.
+  logo: () => {
+    document.body.innerHTML = `<div class="stack" style="gap:18px">
+      ${check(126, 14)}
+      <div>
+        <h1 style="font-size:30px">LanguageTool</h1>
+        <p class="tag" style="font-size:19px;margin-top:4px">Spellcheck</p>
+      </div>
+    </div>`;
+  },
+
+  // Chrome Web Store small promo tile, 440x280. Shown at small sizes in
+  // listings, so it stays down to a mark, the name and one line.
+  tile: () => {
+    document.body.innerHTML = `<div class="stack" style="gap:14px;padding:0 34px">
+      ${check(78, 15)}
+      <h1 style="font-size:27px">LanguageTool Spellcheck</h1>
+      <p class="tag" style="font-size:14.5px;line-height:1.45">Grammar and spelling on
+        every page — checked by a server you run.</p>
+    </div>`;
+  },
+
+  // Chrome Web Store marquee, 1400x560.
+  marquee: () => {
+    document.body.innerHTML = `<div class="beside" style="gap:64px;padding:0 96px">
+      ${check(190, 13)}
+      <div>
+        <h1 style="font-size:62px">LanguageTool Spellcheck</h1>
+        <p class="tag" style="font-size:26px;margin-top:16px;white-space:nowrap">
+          Grammar and spelling on every page — checked by a server you run.</p>
+        <p class="sample" style="font-size:26px;margin-top:34px">I think its
+          <u class="spell">allmost</u> ready, and <u class="grammar">there is</u>
+          a couple of <u class="style">things</u> to fix.</p>
+        <p class="tag" style="font-size:20px;margin-top:30px">No cloud, no account,
+          no telemetry.</p>
+      </div>
+    </div>`;
+  },
+};
+
+(layouts[variant] || layouts.tile)();
+</script>
