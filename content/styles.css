@@ -130,6 +130,44 @@
   font-style: italic;
 }
 
+/* Split button: the top suggestion and its "Auto" half, joined into one shape.
+   Rounded on the outside, square where they meet, with a hairline gap so the
+   boundary is visible before you hover either side. */
+.lt-ext-pop-pair {
+  display: inline-flex;
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  gap: 1px;
+}
+
+.lt-ext-pop-item.lt-ext-pop-pair-main {
+  border-radius: 6px 0 0 6px;
+  min-width: 0;
+}
+
+.lt-ext-pop-auto {
+  flex: none;
+  background: #2c3a4d;
+  border: 0;
+  border-radius: 0 6px 6px 0;
+  padding: 4px 7px;
+  color: #8ab4f8;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lt-ext-pop-auto:hover {
+  background: #38495f;
+}
+
+.lt-ext-pop-auto.lt-ext-on {
+  background: #2a3a2c;
+  color: #81c995;
+  cursor: default;
+}
+
 .lt-ext-pop-rule {
   display: flex;
   align-items: center;

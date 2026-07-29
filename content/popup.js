@@ -163,10 +163,51 @@ const LT = (globalThis.LT ??= {});
           LT.applyReplacement(s, match, value);
         });
         b.title = rep.shortDescription || d.label;
-        primary ??= b;
-        list.appendChild(b);
+        // The top suggestion carries an "Auto" half: same correction, plus a
+        // standing rule to make it from now on. Rendered as one split button so
+        // it reads as an extension of the suggestion rather than a new action —
+        // the two halves are separately coloured because they are one click
+        // apart and only one of them changes settings.
+        if (!primary) {
+          primary = b;
+          const pair = autoPair(b, word, value);
+          list.appendChild(pair || b);
+        } else {
+          list.appendChild(b);
+        }
       }
       root.appendChild(list);
+    }
+
+    // The split-button wrapper, or null when this match can't be pinned:
+    // without a rule id there is nothing stable to key the correction on, and
+    // an empty flagged span (a pure insertion) would match everywhere.
+    function autoPair(main, from, value) {
+      if (!ruleId || !from) return null;
+      const entry = { rule: ruleId, sub: match.rule?.subId || '', from, to: value };
+      const key = LT.autoEntryKey(entry);
+      const on = LT.settings.autoCorrections.some(e => LT.autoEntryKey(e) === key);
+      const pair = div('lt-ext-pop-pair');
+      main.classList.add('lt-ext-pop-pair-main');
+      pair.appendChild(main);
+      const auto = button('lt-ext-pop-auto', 'Auto', () => {
+        // Correct this occurrence now and pin it. The write is fire-and-forget
+        // in the same sense the correction is: the field must not sit there
+        // waiting for storage, so report a failed save in the popup only if it
+        // is still open by then.
+        LT.applyReplacement(s, match, value);
+        persist('sync', { autoCorrections: [...LT.settings.autoCorrections, entry] });
+      });
+      if (on) {
+        auto.disabled = true;
+        auto.classList.add('lt-ext-on');
+        auto.title = 'Already corrected automatically';
+      } else {
+        auto.title = 'Always fix ‘' + trunc(from, 30) + '’ → ‘' + trunc(value, 30) +
+          '’ for this rule';
+      }
+      pair.appendChild(auto);
+      return pair;
     }
 
     // Keep focus (and the caret) in the field while interacting with the

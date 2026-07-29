@@ -17,6 +17,7 @@ const SYNC_DEFAULTS = {
   disabledSites: [],
   disabledRules: [],
   ignoredWords: [],
+  autoCorrections: [],
 };
 
 const LOCAL_DEFAULTS = {
@@ -173,6 +174,29 @@ function renderWords() {
   }
 }
 
+// Each entry is one pinned correction: content scripts apply it whenever this
+// rule flags this exact text. Removing it here stops that immediately.
+function renderAuto() {
+  const list = $('auto');
+  list.textContent = '';
+  settings.autoCorrections.forEach((entry, i) => {
+    if (!entry || typeof entry.from !== 'string') return;
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.textContent = entry.from + ' → ' + entry.to;
+    li.appendChild(span);
+    const rule = document.createElement('span');
+    rule.className = 'rule';
+    rule.textContent = entry.rule + (entry.sub ? '[' + entry.sub + ']' : '');
+    rule.title = rule.textContent;
+    li.appendChild(rule);
+    li.appendChild(removeButton('Stop correcting automatically', () => {
+      save('sync', { autoCorrections: settings.autoCorrections.filter((_, j) => j !== i) });
+    }));
+    list.appendChild(li);
+  });
+}
+
 function renderRules() {
   const list = $('rules');
   list.textContent = '';
@@ -276,6 +300,7 @@ ext.storage.onChanged.addListener((changes, area) => {
     }
   }
   renderWords();
+  renderAuto();
   renderRules();
   renderFields();
   renderToggles();
@@ -310,6 +335,7 @@ async function currentHost() {
   siteHost = host;
   $('server').value = settings.serverUrl;
   renderWords();
+  renderAuto();
   renderRules();
   renderFields();
   renderToggles();

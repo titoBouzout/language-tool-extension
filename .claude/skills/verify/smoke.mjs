@@ -832,6 +832,94 @@ await step('long text: tail window keeps match offsets aligned', async () => {
   return 'offset shifted correctly across a 27k-char tail window';
 });
 
+// --- auto-corrections ---
+
+// The pinned entry is whatever the server reported (the span it flags here
+// covers more than the misspelling), so the second step replays this exact
+// sentence to reproduce the exact same match.
+const AUTO_TEXT = 'A testt here.';
+let autoEntry = null;
+
+await step('auto: the split button pins the correction and applies it', async () => {
+  await page.bringToFront();
+  await page.click('#auto1');
+  await page.type('#auto1', AUTO_TEXT);
+  await page.waitForFunction(() => {
+    const r = document.getElementById('auto1').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  await clickSeg({ id: 'auto1', index: 0 });
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  // The Auto half must live inside the same split button as the top
+  // suggestion, and only the top one may have it.
+  const shape = await page.evaluate(() => ({
+    pairs: document.querySelectorAll('.lt-ext-pop-pair').length,
+    autos: document.querySelectorAll('.lt-ext-pop-auto').length,
+    mainIsFirst: !!document.querySelector('.lt-ext-pop-pair .lt-ext-pop-item:first-child'),
+    main: document.querySelector('.lt-ext-pop-pair-main')?.textContent,
+  }));
+  if (shape.pairs !== 1 || shape.autos !== 1) throw new Error(JSON.stringify(shape));
+  if (!shape.mainIsFirst) throw new Error('suggestion is not the left half');
+  await shot('09-popup-auto-button');
+  await page.evaluate(() => document.querySelector('.lt-ext-pop-auto').click());
+  await sleep(800);
+  // Storage is only reachable from an extension page.
+  const stored = await (await prefsPage()).evaluate(() =>
+    chrome.storage.sync.get({ autoCorrections: [] }).then(o => o.autoCorrections));
+  if (stored.length !== 1) throw new Error(`stored: ${JSON.stringify(stored)}`);
+  autoEntry = stored[0];
+  const e = autoEntry;
+  if (e.to !== shape.main || !e.rule || !AUTO_TEXT.includes(e.from)) {
+    throw new Error(`entry: ${JSON.stringify(e)}`);
+  }
+  const v = await page.$eval('#auto1', el => el.value);
+  if (v !== AUTO_TEXT.replace(e.from, e.to)) throw new Error(`value is ${JSON.stringify(v)}`);
+  return `pinned ${e.from} → ${e.to} on ${e.rule}`;
+});
+
+await step('auto: a pinned correction applies itself with no interaction', async () => {
+  if (!autoEntry) throw new Error('nothing was pinned');
+  const want = AUTO_TEXT.replace(autoEntry.from, autoEntry.to);
+  await page.click('#auto2');
+  await page.type('#auto2', AUTO_TEXT);
+  await page.waitForFunction(
+    (w) => document.getElementById('auto2').value === w, { timeout: 8000 }, want);
+  await sleep(600);
+  const v = await page.$eval('#auto2', el => el.value);
+  if (v !== want) throw new Error(JSON.stringify(v));
+  // No popup, and the caret must be left at the end of the text the user typed
+  // (the edit happened before it, so it shifts by the length delta).
+  if (await page.$('.lt-ext-popup')) throw new Error('popup opened by itself');
+  const caret = await page.$eval('#auto2', el => el.selectionStart);
+  if (caret !== v.length) throw new Error(`caret at ${caret}, expected ${v.length}`);
+  return 'corrected on the way past, caret preserved';
+});
+
+await step('auto: prefs page lists the pinned correction and removes it', async () => {
+  const prefs = await prefsPage();
+  await prefs.bringToFront();
+  const rows = await prefs.$$eval('#auto li', els => els.map(li => li.textContent));
+  const want = autoEntry.from + ' → ' + autoEntry.to;
+  if (!rows.some(r => r.includes(want))) throw new Error(`${JSON.stringify(rows)} lacks ${want}`);
+  await prefs.screenshot({ path: path.join(SHOTS, '10-prefs-auto.png') });
+  await prefs.click('#auto .remove');
+  await sleep(400);
+  const left = await prefs.$$eval('#auto li', els => els.length);
+  if (left !== 0) throw new Error(`${left} rows remain`);
+  // Unpinned: the same misspelling is only underlined now, not rewritten.
+  await page.bringToFront();
+  await page.click('#auto2');
+  await page.keyboard.press('End');
+  await page.type('#auto2', ' A testt again.');
+  await sleep(2500);
+  const v = await page.$eval('#auto2', el => el.value);
+  if (!v.includes('testt')) throw new Error(`still auto-corrected: ${JSON.stringify(v)}`);
+  return 'listed, removed, no longer applied';
+});
+
 await step('stale offsets: a silent value change cancels the replacement', async () => {
   await page.bringToFront();
   await page.click('#stale');

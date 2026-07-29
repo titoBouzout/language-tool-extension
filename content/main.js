@@ -131,6 +131,7 @@ await LT.settingsReady;
       recheck: false, // ask the server even though lastChecked matches
       mo: null, moTimer: 0, // waiting for a controlled editor to apply that edit
       clipboard: 0,   // paste/cut/drop that may never fire an input event
+      autoTimer: 0, autoRuns: 0, // see autoCorrectSoon
     };
 
     if (kind === 'field') {
@@ -151,6 +152,7 @@ await LT.settingsReady;
     clearTimeout(s.timer);
     clearTimeout(s.clipboard);
     clearTimeout(s.settle);
+    clearTimeout(s.autoTimer);
     s.seq++; // invalidate in-flight checks
     s.ro?.disconnect();
     stopWatching(s);
@@ -287,6 +289,9 @@ await LT.settingsReady;
     s.clipboard = 0;
     const splice = s.splice;
     s.splice = null;
+    // Any edit that isn't one of ours means the user is still writing, so the
+    // cycle guard in autoCorrectSoon starts over.
+    if (!splice) s.autoRuns = 0;
     let kept = false;
     if (splice) {
       kept = reanchor(s, splice);
@@ -426,6 +431,50 @@ await LT.settingsReady;
       s.matches = s.matches.filter(m => m.offset >= word[1] || m.offset + m.length <= word[0]);
     }
     render(s);
+    autoCorrectSoon(s);
+  }
+
+  // --- auto-corrections ---
+
+  // A pinned correction applies itself as soon as a check confirms the exact
+  // rule/text situation it was pinned to. Only one per pass: the splice shifts
+  // every later offset, and the recheck it triggers finds the next one.
+  //
+  // Deferred out of the current task because applyMatches is reached from
+  // inside onInput and from reanchor, and editing from there would re-enter
+  // both. The guards below re-verify the match still exists at the same
+  // offsets when the timer fires.
+  const MAX_AUTO_RUNS = 8; // a pair of entries that undo each other must stop
+
+  function autoCorrectSoon(s) {
+    if (s.autoTimer || !LT.settings.autoCorrections.length) return;
+    if (s.autoRuns >= MAX_AUTO_RUNS) return;
+    const text = s.lastChecked ?? '';
+    const match = s.matches.find(m => LT.autoReplacement(m, text) != null);
+    if (!match) return;
+    s.autoTimer = setTimeout(() => {
+      s.autoTimer = 0;
+      if (!s.el.isConnected || s.lastChecked !== text) return;
+      if (!s.matches.includes(match)) return;
+      const value = LT.autoReplacement(match, text);
+      if (value == null) return;
+      s.autoRuns++;
+      // The user may be editing somewhere else entirely in the same field;
+      // applyReplacement selects the flagged span to edit it, which leaves the
+      // caret at the end of the correction. Put it back where it was, shifted
+      // by the edit. Only fields expose a caret we can restore this simply;
+      // in contenteditable the caret follows the correction.
+      const sel = s.kind === 'field' && document.activeElement === s.el
+        ? { start: s.el.selectionStart, end: s.el.selectionEnd, dir: s.el.selectionDirection }
+        : null;
+      LT.applyReplacement(s, match, value);
+      if (sel && sel.start != null && sel.start >= match.offset + match.length) {
+        const delta = value.length - match.length;
+        try {
+          s.el.setSelectionRange(sel.start + delta, sel.end + delta, sel.dir || undefined);
+        } catch { /* element type without a text selection */ }
+      }
+    }, 0);
   }
 
   function render(s) {

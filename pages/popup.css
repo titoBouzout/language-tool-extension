@@ -216,6 +216,20 @@ section {
   content: 'None yet — click an underlined word and choose Disable here';
 }
 
+#auto:empty::before {
+  content: 'None yet — click an underlined word and choose Auto';
+}
+
+/* from → to reads as the correction; the rule it is pinned to is context. */
+#auto .rule {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9aa0a6;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

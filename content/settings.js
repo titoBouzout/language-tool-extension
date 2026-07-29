@@ -19,6 +19,8 @@ const SYNC_DEFAULTS = {
   disabledSites: [],     // hostnames
   disabledRules: [],
   ignoredWords: [],
+  // [{ rule, sub, from, to }] — see LT.autoKey in api.js.
+  autoCorrections: [],
 };
 
 const LOCAL_DEFAULTS = {

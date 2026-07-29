@@ -75,6 +75,10 @@ Click an underline to open the suggestion popup:
 - pick one of the two suggested replacements to apply it — the edit goes through
   the browser's editing pipeline, so undo still works and frameworks see it as a
   normal change;
+- **Auto**, the right half of the top suggestion — apply it now *and* from now
+  on. The correction is pinned to the exact situation the server reported (that
+  rule, including its sub-rule, flagging that exact text), so the same mistake
+  is fixed silently the next time it appears and nothing else is touched;
 - **Ignore** — never flag that word again (stored in your profile);
 - **Disable Rule** — turn off that LanguageTool rule everywhere;
 - **Disable Here** — stop checking this one field on this one site.
@@ -82,7 +86,7 @@ Click an underline to open the suggestion popup:
 The toolbar icon opens preferences: the global on/off switch, "Disable on
 *site*", server URL, language (or auto-detect), preferred variants, native
 language for false-friend detection, picky mode, and the lists of ignored
-words, disabled rules and disabled fields — each removable.
+words, auto-corrections, disabled rules and disabled fields — each removable.
 
 Preferences live in `storage.sync` and follow your browser profile. The
 per-field disable list is keyed by hostname and can grow without bound, so it
