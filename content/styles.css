@@ -91,48 +91,35 @@
 
 .lt-ext-pop-sug {
   display: flex;
-  gap: 6px;
-  padding: 8px 14px;
-  border-top: 1px solid #3c4043;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 0 8px 6px;
 }
 
 .lt-ext-pop-item {
-  flex: 1 1 0;
-  min-width: 0;
-  text-align: center;
-  padding: 7px 10px;
-  background: #3c4043;
-  border: 1px solid #5f6368;
+  flex: none;
+  max-width: 100%;
+  background: #2d2f31;
+  border: 1px solid #4a4d51;
   border-radius: 6px;
+  padding: 4px 7px;
   color: #e8eaed;
+  font: 12px system-ui, sans-serif;
   cursor: pointer;
-  font: inherit;
-  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.lt-ext-pop-item:first-child {
-  background: #8ab4f8;
-  border-color: #8ab4f8;
-  color: #202124;
-}
-
 .lt-ext-pop-item:hover {
-  background: #5f6368;
-  border-color: #80868b;
-}
-
-.lt-ext-pop-item:first-child:hover {
-  background: #aecbfa;
-  border-color: #aecbfa;
-  color: #202124;
+  background: #3c4043;
+  border-color: #5f6368;
 }
 
 .lt-ext-pop-item.lt-ext-ws {
+  color: #bdc1c6;
   font-style: italic;
-  font-weight: 400;
 }
 
 .lt-ext-pop-rule {
@@ -181,15 +168,15 @@
 .lt-ext-pop-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 4px;
   align-items: center;
-  padding: 4px 8px 6px;
+  padding: 6px 8px 4px;
 }
 
 .lt-ext-pop-act {
   flex: none;
-  background: none;
-  border: 0;
+  background: #2d2f31;
+  border: 1px solid #4a4d51;
   border-radius: 6px;
   padding: 4px 7px;
   color: #8ab4f8;
@@ -199,6 +186,7 @@
 
 .lt-ext-pop-act:hover {
   background: #3c4043;
+  border-color: #5f6368;
 }
 
 .lt-ext-pop-note {

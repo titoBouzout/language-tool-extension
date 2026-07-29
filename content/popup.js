@@ -63,24 +63,6 @@ const LT = (globalThis.LT ??= {});
     }
     root.appendChild(div('lt-ext-pop-msg', match.message || 'Possible issue'));
 
-    // Only the two best replacements, as side-by-side buttons. A long list
-    // meant scanning and scrolling; in practice the top suggestion is nearly
-    // always the wanted one.
-    if (match.replacements?.length) {
-      const list = div('lt-ext-pop-sug');
-      for (const rep of match.replacements.slice(0, 2)) {
-        const value = rep.value ?? '';
-        const d = describeReplacement(value);
-        const b = button('lt-ext-pop-item' + (d.ws ? ' lt-ext-ws' : ''), d.label, () => {
-          LT.closePopup();
-          LT.applyReplacement(s, match, value);
-        });
-        b.title = rep.shortDescription || d.label;
-        list.appendChild(b);
-      }
-      root.appendChild(list);
-    }
-
     const meta = div('lt-ext-pop-rule');
     meta.appendChild(div('lt-ext-dot lt-sev-' + LT.severity(match)));
     const cat = match.rule?.category?.name || '';
@@ -159,6 +141,24 @@ const LT = (globalThis.LT ??= {});
     off.title = 'Stop checking this field on ' + LT.siteHost;
     actions.appendChild(off);
     if (actions.childNodes.length) root.appendChild(actions);
+
+    // Only the two best replacements, as buttons. A long list meant scanning
+    // and scrolling; in practice the top suggestion is nearly always the
+    // wanted one. Placed last so the corrections sit closest to the text.
+    if (match.replacements?.length) {
+      const list = div('lt-ext-pop-sug');
+      for (const rep of match.replacements.slice(0, 2)) {
+        const value = rep.value ?? '';
+        const d = describeReplacement(value);
+        const b = button('lt-ext-pop-item' + (d.ws ? ' lt-ext-ws' : ''), d.label, () => {
+          LT.closePopup();
+          LT.applyReplacement(s, match, value);
+        });
+        b.title = rep.shortDescription || d.label;
+        list.appendChild(b);
+      }
+      root.appendChild(list);
+    }
 
     // Keep focus (and the caret) in the field while interacting with the
     // popup; clicks still fire on the buttons.
