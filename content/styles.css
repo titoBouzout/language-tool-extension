@@ -93,8 +93,7 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  padding: 10px 8px;
-  border-top: 1px solid #3c4043;
+  padding: 0 8px 10px;
 }
 
 .lt-ext-pop-item {
@@ -120,6 +119,7 @@
    full accent fill. */
 .lt-ext-pop-item:first-child {
   background: #354152;
+  color: #fff;
 }
 
 .lt-ext-pop-item:first-child:hover {
