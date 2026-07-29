@@ -76,8 +76,8 @@ Click an underline to open the suggestion popup:
   the browser's editing pipeline, so undo still works and frameworks see it as a
   normal change;
 - **Ignore** — never flag that word again (stored in your profile);
-- **Disable rule** — turn off that LanguageTool rule everywhere;
-- **Disable here** — stop checking this one field on this one site.
+- **Disable Rule** — turn off that LanguageTool rule everywhere;
+- **Disable Here** — stop checking this one field on this one site.
 
 The toolbar icon opens preferences: the global on/off switch, "Disable on
 *site*", server URL, language (or auto-detect), preferred variants, native
@@ -107,7 +107,7 @@ else. Beyond that:
 
 `spellcheck="false"` is deliberately **not** honoured: it is inherited, so a
 single `<body spellcheck="false">` would silence a whole site. Use "Disable
-here" or "Disable on *site*" instead.
+Here" or "Disable on *site*" instead.
 
 ## How it works
 

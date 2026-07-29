@@ -63,7 +63,10 @@ const LT = (globalThis.LT ??= {});
     }
 
     const meta = div('lt-ext-pop-rule');
-    meta.appendChild(div('lt-ext-dot lt-sev-' + LT.severity(match)));
+    const dot = div('lt-ext-dot lt-sev-' + LT.severity(match));
+    // issueType is what picks the underline colour; the dot is where it shows.
+    if (match.rule?.issueType) dot.title = match.rule.issueType;
+    meta.appendChild(dot);
     const cat = match.rule?.category?.name || '';
     const desc = match.rule?.description || '';
     const metaText = div('lt-ext-pop-rule-text', cat && desc ? cat + ' · ' + desc : (desc || cat || 'Unknown rule'));
@@ -99,18 +102,7 @@ const LT = (globalThis.LT ??= {});
     }
 
     const actions = div('lt-ext-pop-actions');
-    const ruleId = match.rule?.id;
-    if (ruleId) {
-      if (LT.settings.disabledRules.includes(ruleId)) {
-        actions.appendChild(div('lt-ext-pop-note', 'Rule disabled'));
-      } else {
-        const b = button('lt-ext-pop-act', 'Disable rule', () => {
-          persist('sync', { disabledRules: [...LT.settings.disabledRules, ruleId] });
-        });
-        b.title = ruleId;
-        actions.appendChild(b);
-      }
-    }
+    // Ignore leads: the narrowest opt-out, and the one reached most often.
     const word = (s.lastChecked || '').slice(match.offset, match.offset + match.length);
     if (word.trim()) {
       const lc = word.toLowerCase();
@@ -126,10 +118,22 @@ const LT = (globalThis.LT ??= {});
         actions.appendChild(b);
       }
     }
+    const ruleId = match.rule?.id;
+    if (ruleId) {
+      if (LT.settings.disabledRules.includes(ruleId)) {
+        actions.appendChild(div('lt-ext-pop-note', 'Rule disabled'));
+      } else {
+        const b = button('lt-ext-pop-act', 'Disable Rule', () => {
+          persist('sync', { disabledRules: [...LT.settings.disabledRules, ruleId] });
+        });
+        b.title = ruleId;
+        actions.appendChild(b);
+      }
+    }
     // Per-field opt-out. This replaces honouring the page's spellcheck="false"
     // (which is inherited, so a single attribute on <body> used to silence the
     // extension across a whole site) with a decision the user makes.
-    const off = button('lt-ext-pop-act', 'Disable here', () => {
+    const off = button('lt-ext-pop-act', 'Disable Here', () => {
       const host = LT.siteHost;
       const fields = LT.settings.disabledFields;
       const key = LT.fieldKey(s.el);

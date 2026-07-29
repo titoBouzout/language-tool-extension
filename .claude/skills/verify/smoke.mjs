@@ -514,7 +514,7 @@ await step('probe: "Disable here" opts one field out, and it sticks', async () =
   await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
   const clicked = await page.evaluate(() => {
     const b = [...document.querySelectorAll('.lt-ext-pop-act')]
-      .find(b => b.textContent === 'Disable here');
+      .find(b => b.textContent === 'Disable Here');
     if (!b) return false;
     b.click();
     return true;
