@@ -21,7 +21,10 @@ await LT.settingsReady;
   LT.started = true;
 
   const FIELD_TYPES = new Set(['', 'text', 'search']);
-  const DEBOUNCE_MS = 500;
+  const DEBOUNCE_MS = 500;   // still inside a word: wait for it to be finished
+  const BOUNDARY_MS = 150;   // the edit completed a word (space, punctuation, paste)
+  const FIRST_CHECK_MS = 100; // nothing on screen yet for this element
+  const SETTLE_MS = 900;     // typing stopped: the word at the caret is fair game
   const FOCUS_CHECK_MS = 250;
   const MAX_LIVE = 8;     // most-recently-used elements that keep highlights
   const MAX_TEXT = 20000; // check the tail of longer texts (where typing happens)
@@ -123,6 +126,7 @@ await LT.settingsReady;
       map: null,      // ce: text/node map the matches refer to
       seq: 0, timer: 0, retryMs: 0, lastChecked: null, detectedLanguage: null,
       raf: 0, ro: null,
+      typing: false, settle: 0, // see caretWord: hide errors in the word being typed
       splice: null,   // edit we are about to make ourselves (see reanchor)
       recheck: false, // ask the server even though lastChecked matches
       mo: null, moTimer: 0, // waiting for a controlled editor to apply that edit
@@ -146,6 +150,7 @@ await LT.settingsReady;
     states.delete(s.el);
     clearTimeout(s.timer);
     clearTimeout(s.clipboard);
+    clearTimeout(s.settle);
     s.seq++; // invalidate in-flight checks
     s.ro?.disconnect();
     stopWatching(s);
@@ -166,6 +171,55 @@ await LT.settingsReady;
     if (contextDead) return;
     clearTimeout(s.timer);
     s.timer = setTimeout(() => runCheck(s), delay);
+  }
+
+  // How long to wait before asking the server, decided from the edit itself
+  // rather than from a single fixed debounce. A keystroke that ends inside a
+  // word means the word isn't finished, so waiting is what avoids flagging a
+  // half-typed one; anything that closes a word (space, punctuation, newline,
+  // paste, a suggestion we applied) is checkable straight away, and the very
+  // first check on an element is as fast as we can make it because until it
+  // lands the field shows nothing at all.
+  const WORD_CHAR = /[\p{L}\p{N}'’]/u;
+
+  function typingDelay(s, e) {
+    if (s.lastChecked == null) return FIRST_CHECK_MS;
+    if (!e) return BOUNDARY_MS; // programmatic edit, not someone mid-word
+    if (e.inputType?.startsWith('delete')) return DEBOUNCE_MS;
+    const d = e.data;
+    if (d == null) return BOUNDARY_MS; // paste, newline, drop, autocomplete
+    return WORD_CHAR.test(d[d.length - 1]) ? DEBOUNCE_MS : BOUNDARY_MS;
+  }
+
+  // Offset of a collapsed caret in the text we check, or -1. A selection isn't
+  // a caret and doesn't mark a word as in progress.
+  function caretOffset(s) {
+    if (s.kind === 'field') {
+      if (s.el.selectionStart == null || s.el.selectionStart !== s.el.selectionEnd) return -1;
+      return s.el.selectionStart;
+    }
+    const rootNode = s.el.getRootNode();
+    const sel = rootNode instanceof ShadowRoot && rootNode.getSelection
+      ? rootNode.getSelection()
+      : window.getSelection();
+    if (!sel?.isCollapsed || !sel.anchorNode || !s.el.contains(sel.anchorNode)) return -1;
+    return LT.cePos(s.map || LT.ceBuildMap(s.el), sel.anchorNode, sel.anchorOffset);
+  }
+
+  // The word the caret sits in or against, while typing is still going on.
+  // Debouncing alone can't fix "it corrects words I haven't finished": however
+  // long the wait, the check can always land on a word one keystroke short of
+  // complete, and short waits are exactly what makes the rest of the text
+  // feel responsive. So keep the checks quick and drop the matches that touch
+  // this word instead; the settle timer in onInput brings them back a beat
+  // after the typing stops.
+  function caretWord(s, text) {
+    const pos = caretOffset(s);
+    if (pos < 0 || pos > text.length) return null;
+    let a = pos, b = pos;
+    while (a > 0 && WORD_CHAR.test(text[a - 1])) a--;
+    while (b < text.length && WORD_CHAR.test(text[b])) b++;
+    return a === b ? null : [a, b];
   }
 
   // Applying a suggestion is the one edit whose effect on the text we know
@@ -250,7 +304,16 @@ await LT.settingsReady;
       clearTimeout(s.timer);
       return;
     }
-    scheduleCheck(s, DEBOUNCE_MS);
+    // Typing is in progress until it has been quiet for a beat; while it is,
+    // whatever word the caret is in stays unflagged.
+    s.typing = true;
+    clearTimeout(s.settle);
+    s.settle = setTimeout(() => {
+      s.settle = 0;
+      s.typing = false;
+      if (s.lastChecked != null) applyMatches(s);
+    }, SETTLE_MS);
+    scheduleCheck(s, typingDelay(s, e));
   }
 
   // Only the tail of a very long text is checked — that is where typing
@@ -360,6 +423,10 @@ await LT.settingsReady;
       if (m.rule && disabled.has(m.rule.id)) return false;
       return !ignored.has(text.slice(m.offset, m.offset + m.length).toLowerCase());
     });
+    const word = s.typing ? caretWord(s, text) : null;
+    if (word) {
+      s.matches = s.matches.filter(m => m.offset >= word[1] || m.offset + m.length <= word[0]);
+    }
     render(s);
   }
 
@@ -469,7 +536,9 @@ await LT.settingsReady;
     const el = editableRoot(t);
     if (!el) return;
     const s = attach(el);
-    if (s) scheduleCheck(s, FOCUS_CHECK_MS); // runCheck no-ops if unchanged
+    // runCheck no-ops if unchanged; focusing something never checked before
+    // is the one case where the wait is visible, so keep it short.
+    if (s) scheduleCheck(s, s.lastChecked == null ? FIRST_CHECK_MS : FOCUS_CHECK_MS);
   }
 
   // One document-level listener per event type, rather than three per attached

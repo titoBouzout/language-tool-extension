@@ -469,6 +469,33 @@ const segsOver = (id) => page.evaluate((fid) => {
   }).length;
 }, id);
 
+// "testt" is finished and must be underlined quickly; "wor" is where the
+// caret is left, so it stays clean until the settle timer fires.
+await step('probe: the word being typed is not flagged until typing stops', async () => {
+  await page.click('#typing');
+  await page.type('#typing', 'This is a testt and wor');
+  const started = Date.now();
+  let sawTail = false, sawFinished = false;
+  while (Date.now() - started < 800) {
+    const n = await segsOver('typing');
+    if (n >= 2) sawTail = true;
+    if (n === 1) sawFinished = true;
+    await sleep(40);
+  }
+  if (sawTail) throw new Error('the half-typed word was underlined while typing');
+  await page.waitForFunction(() => {
+    const r = document.getElementById('typing').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].filter(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    }).length >= 2;
+  }, { timeout: 5000 });
+  await shot('08-typing-settled');
+  return sawFinished
+    ? 'finished word underlined while typing, caret word only after the pause'
+    : 'caret word underlined only after the pause (server was slower than the settle)';
+});
+
 await step('probe: spellcheck=false is ignored — the field is still checked', async () => {
   await page.click('#nospell');
   await page.type('#nospell', 'A worng word here.');
