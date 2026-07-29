@@ -61,7 +61,6 @@ const LT = (globalThis.LT ??= {});
     if (match.shortMessage && match.shortMessage !== match.message) {
       root.appendChild(div('lt-ext-pop-short', match.shortMessage));
     }
-    root.appendChild(div('lt-ext-pop-msg', match.message || 'Possible issue'));
 
     const meta = div('lt-ext-pop-rule');
     meta.appendChild(div('lt-ext-dot lt-sev-' + LT.severity(match)));
@@ -141,6 +140,10 @@ const LT = (globalThis.LT ??= {});
     off.title = 'Stop checking this field on ' + LT.siteHost;
     actions.appendChild(off);
     if (actions.childNodes.length) root.appendChild(actions);
+
+    // What went wrong, directly above the corrections: read the explanation,
+    // then pick the fix, without the actions in between.
+    root.appendChild(div('lt-ext-pop-msg', match.message || 'Possible issue'));
 
     // Only the two best replacements, as buttons. A long list meant scanning
     // and scrolling; in practice the top suggestion is nearly always the

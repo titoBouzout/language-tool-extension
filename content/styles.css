@@ -64,7 +64,6 @@
   border: 1px solid #3c4043;
   border-radius: 10px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
-  min-width: 200px;
   max-width: 360px;
   padding: 4px 0 2px;
   color: #e8eaed;
@@ -79,14 +78,14 @@
 }
 
 .lt-ext-pop-msg {
-  padding: 6px 14px 10px;
+  padding: 10px 14px;
+  border-top: 1px solid #3c4043;
   color: #bdc1c6;
 }
 
-.lt-ext-pop-short + .lt-ext-pop-msg {
-  padding-top: 2px;
-  font-size: 12px;
-  color: #9aa0a6;
+/* No separator above the topmost row, whichever row that turns out to be. */
+.lt-ext-popup > *:first-child {
+  border-top: 0;
 }
 
 .lt-ext-pop-sug {
