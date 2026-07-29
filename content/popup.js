@@ -148,6 +148,7 @@ const LT = (globalThis.LT ??= {});
     // Only the two best replacements, as buttons. A long list meant scanning
     // and scrolling; in practice the top suggestion is nearly always the
     // wanted one. Placed last so the corrections sit closest to the text.
+    let primary = null; // the top suggestion, used as the anchor point below
     if (match.replacements?.length) {
       const list = div('lt-ext-pop-sug');
       for (const rep of match.replacements.slice(0, 2)) {
@@ -158,6 +159,7 @@ const LT = (globalThis.LT ??= {});
           LT.applyReplacement(s, match, value);
         });
         b.title = rep.shortDescription || d.label;
+        primary ??= b;
         list.appendChild(b);
       }
       root.appendChild(list);
@@ -171,13 +173,16 @@ const LT = (globalThis.LT ??= {});
     LT.root().appendChild(root);
     const pw = root.offsetWidth;
     const ph = root.offsetHeight;
-    // Centred on the click and just above it, so the buttons land where the
-    // pointer already is. Flips below only when there is no room above.
+    // Sits just above the click, with the top suggestion — the button most
+    // likely to be wanted — lined up under the pointer. Flips below only when
+    // there is no room above; clamped to the viewport either way, so near an
+    // edge the alignment gives way rather than the popup leaving the screen.
     const GAP = 12;
     let top = at.y - ph - GAP;
     if (top < 8) top = Math.min(at.y + GAP, window.innerHeight - ph - 8);
     top = Math.max(8, top);
-    const left = Math.max(8, Math.min(at.x - pw / 2, window.innerWidth - pw - 8));
+    const anchorX = primary ? primary.offsetLeft + primary.offsetWidth / 2 : pw / 2;
+    const left = Math.max(8, Math.min(at.x - anchorX, window.innerWidth - pw - 8));
     root.style.top = top + 'px';
     root.style.left = left + 'px';
     root.style.visibility = '';
