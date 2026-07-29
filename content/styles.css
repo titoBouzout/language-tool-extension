@@ -94,14 +94,15 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  padding: 0 8px 6px;
+  padding: 6px 8px;
+  border-top: 1px solid #3c4043;
 }
 
 .lt-ext-pop-item {
   flex: none;
   max-width: 100%;
-  background: #2d2f31;
-  border: 1px solid #4a4d51;
+  background: #303134;
+  border: 0;
   border-radius: 6px;
   padding: 4px 7px;
   color: #e8eaed;
@@ -113,8 +114,7 @@
 }
 
 .lt-ext-pop-item:hover {
-  background: #3c4043;
-  border-color: #5f6368;
+  background: #45484c;
 }
 
 .lt-ext-pop-item.lt-ext-ws {
@@ -175,8 +175,8 @@
 
 .lt-ext-pop-act {
   flex: none;
-  background: #2d2f31;
-  border: 1px solid #4a4d51;
+  background: #303134;
+  border: 0;
   border-radius: 6px;
   padding: 4px 7px;
   color: #8ab4f8;
@@ -185,8 +185,7 @@
 }
 
 .lt-ext-pop-act:hover {
-  background: #3c4043;
-  border-color: #5f6368;
+  background: #45484c;
 }
 
 .lt-ext-pop-note {

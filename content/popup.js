@@ -122,9 +122,13 @@ const LT = (globalThis.LT ??= {});
       if (LT.settings.ignoredWords.some(w => w.toLowerCase() === lc)) {
         actions.appendChild(div('lt-ext-pop-note', 'Word ignored'));
       } else {
-        actions.appendChild(button('lt-ext-pop-act', 'Ignore ‘' + trunc(word, 24) + '’', () => {
+        // The word goes in the tooltip, not the label — spelling it out made
+        // the popup as wide as the longest flagged word.
+        const b = button('lt-ext-pop-act', 'Ignore', () => {
           persist('sync', { ignoredWords: [...LT.settings.ignoredWords, word] });
-        }));
+        });
+        b.title = 'Never flag ‘' + trunc(word, 40) + '’ again';
+        actions.appendChild(b);
       }
     }
     // Per-field opt-out. This replaces honouring the page's spellcheck="false"

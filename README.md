@@ -72,9 +72,10 @@ after you stop typing.
 
 Click an underline to open the suggestion popup:
 
-- pick a replacement to apply it — the edit goes through the browser's editing
-  pipeline, so undo still works and frameworks see it as a normal change;
-- **Ignore ‘word’** — never flag that word again (stored in your profile);
+- pick one of the two suggested replacements to apply it — the edit goes through
+  the browser's editing pipeline, so undo still works and frameworks see it as a
+  normal change;
+- **Ignore** — never flag that word again (stored in your profile);
 - **Disable rule** — turn off that LanguageTool rule everywhere;
 - **Disable here** — stop checking this one field on this one site.
 
