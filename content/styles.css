@@ -117,6 +117,16 @@
   background: #45484c;
 }
 
+/* The best replacement, nudged forward with a faint blue tint rather than a
+   full accent fill. */
+.lt-ext-pop-item:first-child {
+  background: #354152;
+}
+
+.lt-ext-pop-item:first-child:hover {
+  background: #405066;
+}
+
 .lt-ext-pop-item.lt-ext-ws {
   color: #bdc1c6;
   font-style: italic;
