@@ -124,7 +124,7 @@ await LT.settingsReady;
       rects: [],      // field: per-match content-coordinate rects
       ceRanges: [],   // ce: [{range, sev}] currently registered
       map: null,      // ce: text/node map the matches refer to
-      seq: 0, timer: 0, retryMs: 0, lastChecked: null, detectedLanguage: null,
+      seq: 0, timer: 0, retryMs: 0, lastChecked: null,
       raf: 0, ro: null,
       typing: false, settle: 0, // see caretWord: hide errors in the word being typed
       splice: null,   // edit we are about to make ourselves (see reanchor)
@@ -376,7 +376,6 @@ await LT.settingsReady;
       s.lastChecked = text;
       s.map = map;
       s.raw = [];
-      s.detectedLanguage = null;
       applyMatches(s);
       return;
     }
@@ -404,7 +403,6 @@ await LT.settingsReady;
 
     s.lastChecked = text;
     s.map = map;
-    s.detectedLanguage = resp.language?.detectedLanguage || null;
     s.raw = (resp.matches || [])
       .filter(m => m.offset >= win.guard)
       .map(m => (win.shift ? { ...m, offset: m.offset + win.shift } : m));
@@ -499,12 +497,7 @@ await LT.settingsReady;
         for (const seg of s.rects[i] || []) {
           if (x >= seg.left - 2 && x <= seg.left + seg.width + 2 &&
               y >= seg.top - 2 && y <= seg.top + seg.height + 2) {
-            LT.showPopup(s, s.matches[i], {
-              left: r.left + el.clientLeft + seg.left - el.scrollLeft,
-              top: r.top + el.clientTop + seg.top - el.scrollTop,
-              width: seg.width,
-              height: seg.height,
-            });
+            LT.showPopup(s, s.matches[i], { x: e.clientX, y: e.clientY });
             return;
           }
         }
@@ -523,9 +516,7 @@ await LT.settingsReady;
     if (pos < 0) return;
     const m = s.matches.find(mm => pos >= mm.offset && pos <= mm.offset + mm.length);
     if (!m) return;
-    const range = LT.ceRangeFor(map, m.offset, m.offset + m.length);
-    const rect = range?.getBoundingClientRect();
-    if (rect) LT.showPopup(s, m, rect);
+    LT.showPopup(s, m, { x: e.clientX, y: e.clientY });
   }
 
   // --- global wiring ---

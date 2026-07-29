@@ -66,7 +66,7 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
   min-width: 200px;
   max-width: 360px;
-  padding: 4px 0;
+  padding: 4px 0 2px;
   color: #e8eaed;
   font: 13px/1.45 system-ui, sans-serif;
   text-align: start;
@@ -79,7 +79,7 @@
 }
 
 .lt-ext-pop-msg {
-  padding: 6px 14px 8px;
+  padding: 6px 14px 10px;
   color: #bdc1c6;
 }
 
@@ -94,7 +94,7 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  padding: 6px 8px;
+  padding: 10px 8px;
   border-top: 1px solid #3c4043;
 }
 
@@ -136,7 +136,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 14px;
+  padding: 10px 14px;
   font-size: 11px;
   color: #9aa0a6;
   border-top: 1px solid #3c4043;
@@ -169,18 +169,12 @@
   text-decoration: underline;
 }
 
-.lt-ext-pop-lang {
-  padding: 0 14px 6px;
-  font-size: 11px;
-  color: #9aa0a6;
-}
-
 .lt-ext-pop-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  padding: 6px 8px 4px;
+  padding: 4px 8px 10px;
 }
 
 .lt-ext-pop-act {

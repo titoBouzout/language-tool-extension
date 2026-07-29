@@ -52,8 +52,8 @@ const LT = (globalThis.LT ??= {});
 
   const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
-  // anchor: viewport-coordinate rect of the underlined text.
-  LT.showPopup = function (s, match, anchor) {
+  // at: viewport coordinates of the click that opened the popup.
+  LT.showPopup = function (s, match, at) {
     LT.closePopup();
 
     const root = div('lt-ext-popup');
@@ -84,10 +84,6 @@ const LT = (globalThis.LT ??= {});
       meta.appendChild(a);
     }
     root.appendChild(meta);
-
-    if (LT.settings.language === 'auto' && s.detectedLanguage?.name) {
-      root.appendChild(div('lt-ext-pop-lang', 'Detected language: ' + s.detectedLanguage.name));
-    }
 
     // chrome.storage writes fail on quota (sync caps items at 8KB) and on the
     // write-rate limit. Keep the popup open and say so, rather than closing as
@@ -172,10 +168,13 @@ const LT = (globalThis.LT ??= {});
     LT.root().appendChild(root);
     const pw = root.offsetWidth;
     const ph = root.offsetHeight;
-    let top = anchor.top + anchor.height + 6;
-    if (top + ph > window.innerHeight - 8) top = anchor.top - ph - 6;
+    // Centred on the click and just above it, so the buttons land where the
+    // pointer already is. Flips below only when there is no room above.
+    const GAP = 12;
+    let top = at.y - ph - GAP;
+    if (top < 8) top = Math.min(at.y + GAP, window.innerHeight - ph - 8);
     top = Math.max(8, top);
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - pw - 8));
+    const left = Math.max(8, Math.min(at.x - pw / 2, window.innerWidth - pw - 8));
     root.style.top = top + 'px';
     root.style.left = left + 'px';
     root.style.visibility = '';
