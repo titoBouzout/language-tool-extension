@@ -860,9 +860,15 @@ await step('auto: the split button pins the correction and applies it', async ()
     autos: document.querySelectorAll('.lt-ext-pop-auto').length,
     mainIsFirst: !!document.querySelector('.lt-ext-pop-pair .lt-ext-pop-item:first-child'),
     main: document.querySelector('.lt-ext-pop-pair-main')?.textContent,
+    // The split button and the plain suggestion next to it must be one height.
+    heights: [...document.querySelectorAll('.lt-ext-pop-item, .lt-ext-pop-auto')]
+      .map(b => b.getBoundingClientRect().height),
   }));
   if (shape.pairs !== 1 || shape.autos !== 1) throw new Error(JSON.stringify(shape));
   if (!shape.mainIsFirst) throw new Error('suggestion is not the left half');
+  if (new Set(shape.heights).size !== 1) {
+    throw new Error(`button heights differ: ${shape.heights.join(', ')}`);
+  }
   await shot('09-popup-auto-button');
   await page.evaluate(() => document.querySelector('.lt-ext-pop-auto').click());
   await sleep(800);

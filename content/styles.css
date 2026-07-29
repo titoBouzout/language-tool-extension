@@ -96,15 +96,23 @@
   padding: 0 8px 10px;
 }
 
+/* Every button in this row is sized by one explicit line-height rather than by
+   its own glyphs, so the plain suggestions, the split button and the emoji on
+   it all come out exactly as tall. */
+.lt-ext-pop-item,
+.lt-ext-pop-auto {
+  box-sizing: border-box;
+  font: 13px/18px system-ui, sans-serif;
+  padding: 4px 8px;
+}
+
 .lt-ext-pop-item {
   flex: none;
   max-width: 100%;
   background: #303134;
   border: 0;
   border-radius: 6px;
-  padding: 4px 7px;
   color: #e8eaed;
-  font: 12px system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -151,11 +159,12 @@
   background: #2c3a4d;
   border: 0;
   border-radius: 0 6px 6px 0;
-  padding: 4px 7px;
   color: #8ab4f8;
-  font: 12px system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
+  /* A wand at text size reads as a smudge; the fixed line-height above keeps
+     the button the same height as the suggestions despite the larger glyph. */
+  font-size: 15px;
 }
 
 .lt-ext-pop-auto:hover {

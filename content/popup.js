@@ -190,7 +190,7 @@ const LT = (globalThis.LT ??= {});
       const pair = div('lt-ext-pop-pair');
       main.classList.add('lt-ext-pop-pair-main');
       pair.appendChild(main);
-      const auto = button('lt-ext-pop-auto', 'Auto', () => {
+      const auto = button('lt-ext-pop-auto', '🪄', () => {
         // Correct this occurrence now and pin it. The write is fire-and-forget
         // in the same sense the correction is: the field must not sit there
         // waiting for storage, so report a failed save in the popup only if it
@@ -198,6 +198,7 @@ const LT = (globalThis.LT ??= {});
         LT.applyReplacement(s, match, value);
         persist('sync', { autoCorrections: [...LT.settings.autoCorrections, entry] });
       });
+      // The label is a wand, so the accessible name has to come from here.
       if (on) {
         auto.disabled = true;
         auto.classList.add('lt-ext-on');
@@ -206,6 +207,7 @@ const LT = (globalThis.LT ??= {});
         auto.title = 'Always fix ‘' + trunc(from, 30) + '’ → ‘' + trunc(value, 30) +
           '’ for this rule';
       }
+      auto.setAttribute('aria-label', auto.title);
       pair.appendChild(auto);
       return pair;
     }
