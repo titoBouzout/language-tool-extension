@@ -2,6 +2,11 @@
 // execCommand('insertText') first — it goes through the browser's editing
 // pipeline, so it preserves the undo stack and fires the same trusted-looking
 // input events frameworks listen for.
+//
+// Returns whether the edit was made (or handed to an editor that owns the
+// field). False means it was declined because the live text had moved under
+// the match — callers that were about to do something on the strength of the
+// edit, like restoring a caret, must not.
 const LT = (globalThis.LT ??= {});
 
 LT.applyReplacement = function (s, match, value) {
@@ -14,7 +19,7 @@ LT.applyReplacement = function (s, match, value) {
   // have moved. Applying then would splice the replacement into unrelated
   // text, so re-read the live text first and bail to a recheck if it moved.
   const expected = (s.lastChecked ?? '').slice(start, end);
-  const stale = () => { LT.afterEdit?.(s); };
+  const stale = () => { LT.afterEdit?.(s); return false; };
 
   if (s.kind === 'field') {
     if (el.value.slice(start, end) !== expected) return stale();
@@ -46,19 +51,19 @@ LT.applyReplacement = function (s, match, value) {
     // (a page handler canceling the trusted beforeinput) — make sure the
     // recheck is scheduled regardless; the shared timer dedupes.
     LT.afterEdit?.(s);
-    return;
+    return true;
   }
 
   // contenteditable
   const map = LT.ceBuildMap(el);
   if (map.text.slice(start, end) !== expected) return stale();
   const range = LT.ceRangeFor(map, start, end);
-  if (!range) return;
+  if (!range) return false;
   const rootNode = el.getRootNode();
   const sel = rootNode instanceof ShadowRoot && rootNode.getSelection
     ? rootNode.getSelection()
     : window.getSelection();
-  if (!sel) return;
+  if (!sel) return false;
   el.focus();
   sel.removeAllRanges();
   sel.addRange(range);
@@ -93,7 +98,7 @@ LT.applyReplacement = function (s, match, value) {
     // Canceled: the page's editor consumed the edit. No native input event
     // will fire, so tell the checker directly.
     LT.afterEdit?.(s);
-    return;
+    return true;
   }
 
   let ok = false;
@@ -112,4 +117,5 @@ LT.applyReplacement = function (s, match, value) {
     }));
   }
   LT.afterEdit?.(s);
+  return true;
 };

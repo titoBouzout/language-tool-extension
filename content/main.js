@@ -289,9 +289,12 @@ await LT.settingsReady;
     s.clipboard = 0;
     const splice = s.splice;
     s.splice = null;
-    // Any edit that isn't one of ours means the user is still writing, so the
-    // cycle guard in autoCorrectSoon starts over.
-    if (!splice) s.autoRuns = 0;
+    // A real edit event that isn't one of ours means the user is writing, so
+    // the cycle guard in autoCorrectSoon starts over. Deliberately not reset
+    // for the eventless paths (a page rewriting the field, a declined
+    // replacement calling back in): those can repeat without anyone typing,
+    // and the budget is what stops them repeating forever.
+    if (e && !splice) s.autoRuns = 0;
     let kept = false;
     if (splice) {
       kept = reanchor(s, splice);
@@ -442,11 +445,19 @@ await LT.settingsReady;
   //
   // Deferred out of the current task because applyMatches is reached from
   // inside onInput and from reanchor, and editing from there would re-enter
-  // both. The guards below re-verify the match still exists at the same
-  // offsets when the timer fires.
+  // both. Everything the pass depends on is therefore re-read when the timer
+  // fires — the settings list (an entry can be removed from the options page
+  // in between), the checked text, and the match itself, which a manual
+  // correction or a landing check may have shifted or dropped. On top of that
+  // applyReplacement compares the live text against the span it is about to
+  // replace and declines if it moved, so the worst a stale pass can do is
+  // nothing.
   const MAX_AUTO_RUNS = 8; // a pair of entries that undo each other must stop
 
-  function autoCorrectSoon(s) {
+  // retry: allow one more pass when this one finds the state moved. Bounded on
+  // purpose — a page churning the field faster than the timer fires must not
+  // keep it going.
+  function autoCorrectSoon(s, retry = true) {
     if (s.autoTimer || !LT.settings.autoCorrections.length) return;
     if (s.autoRuns >= MAX_AUTO_RUNS) return;
     const text = s.lastChecked ?? '';
@@ -454,26 +465,39 @@ await LT.settingsReady;
     if (!match) return;
     s.autoTimer = setTimeout(() => {
       s.autoTimer = 0;
-      if (!s.el.isConnected || s.lastChecked !== text) return;
-      if (!s.matches.includes(match)) return;
+      if (!s.el.isConnected) return;
+      // Something moved while the timer was pending. The applyMatches call
+      // that came with it found the timer already scheduled and did not queue
+      // a pass of its own, so start one now against the current state instead
+      // of leaving a pinned correction unapplied until the next keystroke.
+      if (s.lastChecked !== text || !s.matches.includes(match)) {
+        if (retry) autoCorrectSoon(s, false);
+        return;
+      }
       const value = LT.autoReplacement(match, text);
       if (value == null) return;
+      // Spent whether or not the edit lands: a decline calls back in through
+      // afterEdit, and only a bounded number of those may follow each other.
       s.autoRuns++;
       // The user may be editing somewhere else entirely in the same field;
       // applyReplacement selects the flagged span to edit it, which leaves the
       // caret at the end of the correction. Put it back where it was, shifted
-      // by the edit. Only fields expose a caret we can restore this simply;
-      // in contenteditable the caret follows the correction.
-      const sel = s.kind === 'field' && document.activeElement === s.el
+      // by the edit when it sat after the span. Only fields expose a caret we
+      // can restore this simply; in contenteditable the caret follows the
+      // correction.
+      const end = match.offset + match.length;
+      const sel = s.kind === 'field' && document.activeElement === s.el &&
+        s.el.selectionStart != null &&
+        (s.el.selectionStart >= end || s.el.selectionEnd <= match.offset)
         ? { start: s.el.selectionStart, end: s.el.selectionEnd, dir: s.el.selectionDirection }
         : null;
-      LT.applyReplacement(s, match, value);
-      if (sel && sel.start != null && sel.start >= match.offset + match.length) {
-        const delta = value.length - match.length;
-        try {
-          s.el.setSelectionRange(sel.start + delta, sel.end + delta, sel.dir || undefined);
-        } catch { /* element type without a text selection */ }
-      }
+      // Declined as stale: no edit was made, so there is no caret to put back
+      // and moving it would be a jump out of nowhere.
+      if (!LT.applyReplacement(s, match, value) || !sel) return;
+      const delta = sel.start >= end ? value.length - match.length : 0;
+      try {
+        s.el.setSelectionRange(sel.start + delta, sel.end + delta, sel.dir || undefined);
+      } catch { /* element type without a text selection */ }
     }, 0);
   }
 

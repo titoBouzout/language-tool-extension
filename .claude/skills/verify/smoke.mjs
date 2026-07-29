@@ -926,6 +926,74 @@ await step('auto: prefs page lists the pinned correction and removes it', async 
   return 'listed, removed, no longer applied';
 });
 
+// The correction can land anywhere in the field, including behind the caret —
+// pinning it from the options page while text already sits in a focused field
+// is the case that arrives with no keystroke of its own.
+await step('auto: a correction behind the caret leaves the caret where it was', async () => {
+  const prefs = await prefsPage();
+  await page.bringToFront();
+  await page.click('#auto3');
+  await page.type('#auto3', AUTO_TEXT);
+  await page.waitForFunction(() => {
+    const r = document.getElementById('auto3').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  await page.keyboard.down('Control');
+  await page.keyboard.press('Home');
+  await page.keyboard.up('Control');
+  await sleep(1200); // let typing settle so the caret word is checkable again
+  await prefs.evaluate((e) => chrome.storage.sync.set({ autoCorrections: [e] }), autoEntry);
+  const want = AUTO_TEXT.replace(autoEntry.from, autoEntry.to);
+  await page.bringToFront();
+  await page.waitForFunction(
+    (w) => document.getElementById('auto3').value === w, { timeout: 8000 }, want);
+  const caret = await page.$eval('#auto3', el => el.selectionStart);
+  if (caret !== 0) throw new Error(`caret moved to ${caret}`);
+  return 'corrected ahead of the caret, caret still at 0';
+});
+
+// Two entries that undo each other. The budget in autoCorrectSoon is the only
+// thing between this and an endless correct/recheck loop.
+await step('auto: entries that undo each other settle instead of looping', async () => {
+  const prefs = await prefsPage();
+  await prefs.evaluate((rule) => chrome.storage.sync.set({
+    autoCorrections: [
+      { rule, sub: '', from: 'recieve', to: 'recieved' },
+      { rule, sub: '', from: 'recieved', to: 'recieve' },
+    ],
+  }), autoEntry.rule);
+  await sleep(300);
+  await page.bringToFront();
+  await page.click('#autocycle');
+  await page.type('#autocycle', 'I recieve it.');
+  await page.waitForFunction(
+    () => document.getElementById('autocycle').value !== 'I recieve it.', { timeout: 8000 });
+  // Record every flip: the count is what tells a bounded run from a loop.
+  const flips = await page.evaluate(() => new Promise(done => {
+    const el = document.getElementById('autocycle');
+    const seen = [el.value];
+    const t = setInterval(() => {
+      if (el.value !== seen[seen.length - 1]) seen.push(el.value);
+    }, 50);
+    setTimeout(() => { clearInterval(t); done(seen); }, 8000);
+  }));
+  const b = await page.$eval('#autocycle', el => el.value);
+  if (b !== flips[flips.length - 1]) throw new Error(`still flipping: ${JSON.stringify(b)}`);
+  if (!/reciev/.test(b)) throw new Error(`unexpected text: ${JSON.stringify(b)}`);
+  if (flips.length > 12) throw new Error(`${flips.length} flips: ${flips.join(' | ')}`);
+  // The page must still be responsive, and typing must re-arm the budget
+  // rather than being ignored.
+  await page.type('#autocycle', ' Ok.');
+  await sleep(500);
+  const c = await page.$eval('#autocycle', el => el.value);
+  if (!c.endsWith(' Ok.')) throw new Error(`typing did not land: ${JSON.stringify(c)}`);
+  await prefs.evaluate(() => chrome.storage.sync.set({ autoCorrections: [] }));
+  return `${flips.length - 1} flip(s) then settled on ${JSON.stringify(b)}, field still responsive`;
+});
+
 await step('stale offsets: a silent value change cancels the replacement', async () => {
   await page.bringToFront();
   await page.click('#stale');

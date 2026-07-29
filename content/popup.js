@@ -91,14 +91,15 @@ const LT = (globalThis.LT ??= {});
     // write-rate limit. Keep the popup open and say so, rather than closing as
     // if the word had been saved.
     async function persist(area, items) {
-      if (await LT.save(area, items)) { LT.closePopup(); return; }
-      if (active?.root !== root) return;
+      if (await LT.save(area, items)) { LT.closePopup(); return true; }
+      if (active?.root !== root) return false;
       let note = root.querySelector('.lt-ext-pop-error');
       if (!note) {
         note = div('lt-ext-pop-error');
         root.appendChild(note);
       }
       note.textContent = LT.saveError || 'Could not save';
+      return false;
     }
 
     const actions = div('lt-ext-pop-actions');
@@ -190,13 +191,16 @@ const LT = (globalThis.LT ??= {});
       const pair = div('lt-ext-pop-pair');
       main.classList.add('lt-ext-pop-pair-main');
       pair.appendChild(main);
-      const auto = button('lt-ext-pop-auto', '🪄', () => {
-        // Correct this occurrence now and pin it. The write is fire-and-forget
-        // in the same sense the correction is: the field must not sit there
-        // waiting for storage, so report a failed save in the popup only if it
-        // is still open by then.
-        LT.applyReplacement(s, match, value);
-        persist('sync', { autoCorrections: [...LT.settings.autoCorrections, entry] });
+      const auto = button('lt-ext-pop-auto', '🪄', async () => {
+        // Pin first, correct second. The other way round, a refused write
+        // (sync's 8KB item cap, its write-rate limit) would leave the
+        // correction applied and silently not remembered — and the note saying
+        // so needs the popup open, which applying closes. Left alone the popup
+        // stays up with the error, and the other half of the button is still
+        // there to make the correction only.
+        if (await persist('sync', { autoCorrections: [...LT.settings.autoCorrections, entry] })) {
+          LT.applyReplacement(s, match, value);
+        }
       });
       // The label is a wand, so the accessible name has to come from here.
       if (on) {
