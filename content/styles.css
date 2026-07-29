@@ -90,33 +90,49 @@
 }
 
 .lt-ext-pop-sug {
-  max-height: 190px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  padding: 2px 0;
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px;
   border-top: 1px solid #3c4043;
 }
 
 .lt-ext-pop-item {
-  display: block;
-  width: 100%;
-  text-align: start;
-  padding: 6px 14px;
-  background: none;
-  border: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  padding: 7px 10px;
+  background: #3c4043;
+  border: 1px solid #5f6368;
+  border-radius: 6px;
   color: #e8eaed;
   cursor: pointer;
   font: inherit;
-  white-space: pre-wrap;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lt-ext-pop-item:first-child {
+  background: #8ab4f8;
+  border-color: #8ab4f8;
+  color: #202124;
 }
 
 .lt-ext-pop-item:hover {
-  background: #3c4043;
+  background: #5f6368;
+  border-color: #80868b;
+}
+
+.lt-ext-pop-item:first-child:hover {
+  background: #aecbfa;
+  border-color: #aecbfa;
+  color: #202124;
 }
 
 .lt-ext-pop-item.lt-ext-ws {
-  color: #9aa0a6;
   font-style: italic;
+  font-weight: 400;
 }
 
 .lt-ext-pop-rule {

@@ -63,16 +63,19 @@ const LT = (globalThis.LT ??= {});
     }
     root.appendChild(div('lt-ext-pop-msg', match.message || 'Possible issue'));
 
+    // Only the two best replacements, as side-by-side buttons. A long list
+    // meant scanning and scrolling; in practice the top suggestion is nearly
+    // always the wanted one.
     if (match.replacements?.length) {
       const list = div('lt-ext-pop-sug');
-      for (const rep of match.replacements.slice(0, 12)) {
+      for (const rep of match.replacements.slice(0, 2)) {
         const value = rep.value ?? '';
         const d = describeReplacement(value);
         const b = button('lt-ext-pop-item' + (d.ws ? ' lt-ext-ws' : ''), d.label, () => {
           LT.closePopup();
           LT.applyReplacement(s, match, value);
         });
-        if (rep.shortDescription) b.title = rep.shortDescription;
+        b.title = rep.shortDescription || d.label;
         list.appendChild(b);
       }
       root.appendChild(list);
