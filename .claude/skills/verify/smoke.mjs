@@ -151,11 +151,20 @@ await step('popup: detected language code sits in the bottom-right corner', asyn
       code: el.textContent, title: el.title,
       last: pop.lastElementChild === el,
       rightGap: p.right - r.right, bottomGap: p.bottom - r.bottom,
+      // Out of the flow: no button or text of the popup may share its box.
+      // Only leaves are compared — a row container's padding legitimately
+      // reaches down into the corner the label sits in.
+      overlaps: [...pop.querySelectorAll('*')].some(o => {
+        if (o === el || o.childElementCount) return false;
+        const b = o.getBoundingClientRect();
+        return b.right > r.left && b.left < r.right && b.bottom > r.top && b.top < r.bottom;
+      }),
     };
   });
   if (!info) throw new Error('no .lt-ext-pop-lang in the popup');
   if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(info.code)) throw new Error(`not a short code: ${info.code}`);
-  if (!info.last) throw new Error('language row is not the last row');
+  if (!info.last) throw new Error('language label is not the last child');
+  if (info.overlaps) throw new Error('language label overlaps another popup element');
   if (info.rightGap > 14 || info.bottomGap > 10) {
     throw new Error(`not in the corner: right ${info.rightGap}, bottom ${info.bottomGap}`);
   }
