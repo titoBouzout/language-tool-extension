@@ -256,7 +256,31 @@ const LT = (globalThis.LT ??= {});
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); LT.closePopup(); }
     };
-    const onScroll = (e) => { if (!root.contains(e.target)) LT.closePopup(); };
+    // Scrolling doesn't close the popup — an unrelated scroller moving on its
+    // own (a live chat, a feed) would yank it away mid-choice. Instead the
+    // popup follows the field: it shifts by however much the field moved, so
+    // it stays put when the field does and tracks it when it doesn't.
+    let anchorRect = s.el.getBoundingClientRect();
+    let popTop = top;
+    let popLeft = left;
+    let followRaf = 0;
+    const follow = () => {
+      if (followRaf) return;
+      followRaf = requestAnimationFrame(() => {
+        followRaf = 0;
+        if (active?.root !== root) return;
+        const r = s.el.getBoundingClientRect();
+        const dx = r.left - anchorRect.left;
+        const dy = r.top - anchorRect.top;
+        anchorRect = r;
+        if (!dx && !dy) return;
+        popTop = Math.max(8, Math.min(popTop + dy, window.innerHeight - root.offsetHeight - 8));
+        popLeft = Math.max(8, Math.min(popLeft + dx, window.innerWidth - root.offsetWidth - 8));
+        root.style.top = popTop + 'px';
+        root.style.left = popLeft + 'px';
+      });
+    };
+    const onScroll = (e) => { if (!root.contains(e.target)) follow(); };
     const onFocus = (e) => { if (!root.contains(e.target) && e.target !== s.el) LT.closePopup(); };
 
     active = {
@@ -266,6 +290,7 @@ const LT = (globalThis.LT ??= {});
         document.removeEventListener('keydown', onKey, true);
         document.removeEventListener('scroll', onScroll, { capture: true });
         document.removeEventListener('focusin', onFocus, true);
+        if (followRaf) cancelAnimationFrame(followRaf);
       }],
     };
 

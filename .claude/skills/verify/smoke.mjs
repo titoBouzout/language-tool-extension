@@ -708,6 +708,64 @@ await step('probe: overlay stays aligned after page scroll', async () => {
   return `drift ${d.toFixed(1)}px`;
 });
 
+await step('probe: an unrelated scroller does not close the popup', async () => {
+  await page.evaluate(() => document.getElementById('chatbox').scrollTo(0, 0));
+  await page.click('#chatfield');
+  await page.type('#chatfield', 'This is a testt.');
+  await page.waitForFunction(() => {
+    const r = document.getElementById('chatfield').getBoundingClientRect();
+    return [...document.querySelectorAll('.lt-ext-seg')].some(s => {
+      const b = s.getBoundingClientRect();
+      return b.width > 0 && b.top >= r.top - 2 && b.bottom <= r.bottom + 2;
+    });
+  }, { timeout: 8000 });
+  await clickSeg({ id: 'chatfield', index: 0 });
+  await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
+  const before = await page.$eval('.lt-ext-popup', p => {
+    const r = p.getBoundingClientRect();
+    return { top: r.top, left: r.left };
+  });
+
+  // The chat scrolls itself, the way an incoming message does. The field it
+  // sits next to doesn't move, so the popup must neither close nor drift.
+  await page.evaluate(() => {
+    const box = document.getElementById('chatbox');
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+    box.scrollTop = 400;
+  });
+  await sleep(300);
+  const after = await page.evaluate(() => {
+    const p = document.querySelector('.lt-ext-popup');
+    if (!p) return null;
+    const r = p.getBoundingClientRect();
+    return { top: r.top, left: r.left };
+  });
+  if (!after) throw new Error('popup closed when the chat scrolled');
+  const drift = Math.abs(after.top - before.top) + Math.abs(after.left - before.left);
+  if (drift > 1) throw new Error(`popup drifted ${drift}px while the field stayed put`);
+
+  // Now move the field itself: the popup follows it instead of staying behind.
+  const moved = await page.evaluate(async () => {
+    const ta = document.getElementById('chatfield');
+    const p = document.querySelector('.lt-ext-popup');
+    const f0 = ta.getBoundingClientRect().top;
+    const p0 = p.getBoundingClientRect().top;
+    window.scrollBy(0, 120);
+    await new Promise(r => setTimeout(r, 300));
+    return {
+      field: ta.getBoundingClientRect().top - f0,
+      popup: document.querySelector('.lt-ext-popup')?.getBoundingClientRect().top - p0,
+    };
+  });
+  if (!Number.isFinite(moved.popup)) throw new Error('popup closed on page scroll');
+  if (Math.abs(moved.popup - moved.field) > 2) {
+    throw new Error(`field moved ${moved.field}px but popup moved ${moved.popup}px`);
+  }
+  await shot('08-popup-follows-field');
+  await page.keyboard.press('Escape');
+  return `stayed open through chat scroll, tracked the field ${moved.field.toFixed(0)}px`;
+});
+
 await step('probe: no extension UI events leaked to page listeners', async () => {
   const leaks = await page.evaluate(() => window.__leaks);
   if (leaks.length) throw new Error(`leaked: ${JSON.stringify(leaks)}`);
