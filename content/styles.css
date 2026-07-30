@@ -244,21 +244,21 @@
   color: #9aa0a6;
 }
 
-/* Checked-as language: parked in the bottom-right corner, out of the flow so
-   it can't stretch a row or push the suggestion buttons around. The popup
-   grows a little bottom padding to make room for it. */
+/* Checked-as language: the tail of the suggestion row, pushed to its right
+   edge. Shorter than the buttons and with no padding of its own, so it rides
+   in the row without changing its height. */
 .lt-ext-pop-lang {
-  position: absolute;
-  right: 9px;
-  bottom: 1px;
+  margin-left: auto;
+  padding-left: 6px;
   font-size: 10px;
   line-height: 12px;
   color: #80868b;
-  pointer-events: none;
 }
 
-.lt-ext-popup:has(.lt-ext-pop-lang) {
-  padding-bottom: 11px;
+/* No suggestions to ride along with — then it is a row, kept to the corner. */
+.lt-ext-popup > .lt-ext-pop-lang {
+  padding: 0 10px 4px;
+  text-align: end;
 }
 
 .lt-ext-pop-error {

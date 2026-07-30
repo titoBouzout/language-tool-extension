@@ -154,8 +154,9 @@ const LT = (globalThis.LT ??= {});
     // and scrolling; in practice the top suggestion is nearly always the
     // wanted one. Placed last so the corrections sit closest to the text.
     let primary = null; // the top suggestion, used as the anchor point below
+    let sugRow = null;
     if (match.replacements?.length) {
-      const list = div('lt-ext-pop-sug');
+      const list = sugRow = div('lt-ext-pop-sug');
       for (const rep of match.replacements.slice(0, 2)) {
         const value = rep.value ?? '';
         const d = describeReplacement(value);
@@ -180,16 +181,17 @@ const LT = (globalThis.LT ??= {});
       root.appendChild(list);
     }
 
-    // Which language the text was checked as, in the corner and dimmed: with
-    // language 'auto' this is the detection, and a wrong one explains an odd
-    // match better than anything else in the popup can.
+    // Which language the text was checked as, dimmed at the end of the
+    // suggestion row: with language 'auto' this is the detection, and a wrong
+    // one explains an odd match better than anything else in the popup can.
+    // It rides along with the buttons rather than taking a row of its own.
     const lang = s.language;
     if (lang?.code) {
       const el = div('lt-ext-pop-lang', lang.code);
       const detected = lang.detectedLanguage?.code;
       el.title = (lang.name || lang.code) +
         (detected && detected !== lang.code ? ' (detected ' + detected + ')' : '');
-      root.appendChild(el);
+      (sugRow || root).appendChild(el);
     }
 
     // The split-button wrapper, or null when this match can't be pinned:

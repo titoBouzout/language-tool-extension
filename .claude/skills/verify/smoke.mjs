@@ -141,33 +141,36 @@ await step('textarea: click underline opens popup with suggestions', async () =>
   return labels.slice(0, 3).join(', ');
 });
 
-await step('popup: detected language code sits in the bottom-right corner', async () => {
+await step('popup: detected language code rides at the end of the suggestion row', async () => {
   const info = await page.evaluate(() => {
     const pop = document.querySelector('.lt-ext-popup');
     const el = pop?.querySelector('.lt-ext-pop-lang');
     if (!el) return null;
+    const row = pop.querySelector('.lt-ext-pop-sug');
     const p = pop.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    const btns = [...row.querySelectorAll('.lt-ext-pop-item')].map(b => b.getBoundingClientRect());
     return {
       code: el.textContent, title: el.title,
-      last: pop.lastElementChild === el,
-      rightGap: p.right - r.right, bottomGap: p.bottom - r.bottom,
-      // Out of the flow: no button or text of the popup may share its box.
-      // Only leaves are compared — a row container's padding legitimately
-      // reaches down into the corner the label sits in.
-      overlaps: [...pop.querySelectorAll('*')].some(o => {
-        if (o === el || o.childElementCount) return false;
-        const b = o.getBoundingClientRect();
-        return b.right > r.left && b.left < r.right && b.bottom > r.top && b.top < r.bottom;
-      }),
+      inRow: row.lastElementChild === el,
+      rightGap: p.right - r.right,
+      // The row must be no taller than its buttons plus its own padding, and
+      // the label must sit inside the band they occupy — it may not push the
+      // buttons around or add a line.
+      rowGrew: rr.height > Math.max(...btns.map(b => b.height)) + 10.5,
+      inBand: r.top >= Math.min(...btns.map(b => b.top)) &&
+              r.bottom <= Math.max(...btns.map(b => b.bottom)),
+      // Clear of the last button, with room to breathe.
+      leftGap: r.left - Math.max(...btns.map(b => b.right)),
     };
   });
   if (!info) throw new Error('no .lt-ext-pop-lang in the popup');
   if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(info.code)) throw new Error(`not a short code: ${info.code}`);
-  if (!info.last) throw new Error('language label is not the last child');
-  if (info.overlaps) throw new Error('language label overlaps another popup element');
-  if (info.rightGap > 14 || info.bottomGap > 10) {
-    throw new Error(`not in the corner: right ${info.rightGap}, bottom ${info.bottomGap}`);
-  }
+  if (!info.inRow) throw new Error('language label is not the last item of the suggestion row');
+  if (info.rowGrew) throw new Error('language label made the suggestion row taller');
+  if (!info.inBand) throw new Error('language label sits outside the button band');
+  if (info.leftGap < 4) throw new Error(`too close to the last button: ${info.leftGap}px`);
+  if (info.rightGap > 14) throw new Error(`not at the right edge: ${info.rightGap}px`);
   return `${info.code} (${info.title})`;
 });
 
