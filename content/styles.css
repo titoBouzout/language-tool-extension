@@ -249,6 +249,7 @@
    in the row without changing its height. */
 .lt-ext-pop-lang {
   margin-left: auto;
+  align-self: flex-end; /* sits on the buttons' bottom edge, not their middle */
   padding-left: 6px;
   font-size: 10px;
   line-height: 12px;

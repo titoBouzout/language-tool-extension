@@ -160,6 +160,8 @@ await step('popup: detected language code rides at the end of the suggestion row
       rowGrew: rr.height > Math.max(...btns.map(b => b.height)) + 10.5,
       inBand: r.top >= Math.min(...btns.map(b => b.top)) &&
               r.bottom <= Math.max(...btns.map(b => b.bottom)),
+      // Bottom-aligned with the buttons, not floating in the middle.
+      baseOff: Math.abs(r.bottom - Math.max(...btns.map(b => b.bottom))),
       // Clear of the last button, with room to breathe.
       leftGap: r.left - Math.max(...btns.map(b => b.right)),
     };
@@ -169,6 +171,7 @@ await step('popup: detected language code rides at the end of the suggestion row
   if (!info.inRow) throw new Error('language label is not the last item of the suggestion row');
   if (info.rowGrew) throw new Error('language label made the suggestion row taller');
   if (!info.inBand) throw new Error('language label sits outside the button band');
+  if (info.baseOff > 1) throw new Error(`not bottom-aligned with the buttons: ${info.baseOff}px off`);
   if (info.leftGap < 4) throw new Error(`too close to the last button: ${info.leftGap}px`);
   if (info.rightGap > 14) throw new Error(`not at the right edge: ${info.rightGap}px`);
   return `${info.code} (${info.title})`;
