@@ -244,6 +244,15 @@
   color: #9aa0a6;
 }
 
+/* Checked-as language: last row, corner-aligned, quiet enough to ignore. */
+.lt-ext-pop-lang {
+  padding: 0 10px 4px;
+  text-align: end;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #80868b;
+}
+
 .lt-ext-pop-error {
   padding: 4px 14px 8px;
   font-size: 11px;

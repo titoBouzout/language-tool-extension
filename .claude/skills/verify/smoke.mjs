@@ -141,6 +141,27 @@ await step('textarea: click underline opens popup with suggestions', async () =>
   return labels.slice(0, 3).join(', ');
 });
 
+await step('popup: detected language code sits in the bottom-right corner', async () => {
+  const info = await page.evaluate(() => {
+    const pop = document.querySelector('.lt-ext-popup');
+    const el = pop?.querySelector('.lt-ext-pop-lang');
+    if (!el) return null;
+    const p = pop.getBoundingClientRect(), r = el.getBoundingClientRect();
+    return {
+      code: el.textContent, title: el.title,
+      last: pop.lastElementChild === el,
+      rightGap: p.right - r.right, bottomGap: p.bottom - r.bottom,
+    };
+  });
+  if (!info) throw new Error('no .lt-ext-pop-lang in the popup');
+  if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(info.code)) throw new Error(`not a short code: ${info.code}`);
+  if (!info.last) throw new Error('language row is not the last row');
+  if (info.rightGap > 14 || info.bottomGap > 10) {
+    throw new Error(`not in the corner: right ${info.rightGap}, bottom ${info.bottomGap}`);
+  }
+  return `${info.code} (${info.title})`;
+});
+
 await step('textarea: applying suggestion edits the value', async () => {
   await clickSuggestion('test');
   await sleep(200);

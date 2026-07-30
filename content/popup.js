@@ -180,6 +180,18 @@ const LT = (globalThis.LT ??= {});
       root.appendChild(list);
     }
 
+    // Which language the text was checked as, in the corner and dimmed: with
+    // language 'auto' this is the detection, and a wrong one explains an odd
+    // match better than anything else in the popup can.
+    const lang = s.language;
+    if (lang?.code) {
+      const el = div('lt-ext-pop-lang', lang.code);
+      const detected = lang.detectedLanguage?.code;
+      el.title = (lang.name || lang.code) +
+        (detected && detected !== lang.code ? ' (detected ' + detected + ')' : '');
+      root.appendChild(el);
+    }
+
     // The split-button wrapper, or null when this match can't be pinned:
     // without a rule id there is nothing stable to key the correction on, and
     // an empty flagged span (a pure insertion) would match everywhere.

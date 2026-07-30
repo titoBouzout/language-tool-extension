@@ -125,6 +125,7 @@ await LT.settingsReady;
       ceRanges: [],   // ce: [{range, sev}] currently registered
       map: null,      // ce: text/node map the matches refer to
       seq: 0, timer: 0, retryMs: 0, lastChecked: null,
+      language: null, // { name, code, detectedLanguage } from the last check
       raf: 0, ro: null,
       typing: false, settle: 0, // see caretWord: hide errors in the word being typed
       splice: null,   // edit we are about to make ourselves (see reanchor)
@@ -398,6 +399,7 @@ await LT.settingsReady;
       // Server unreachable: clear stale marks and retry with backoff, so
       // highlights come back without requiring another keystroke.
       s.lastChecked = null;
+      s.language = null;
       s.raw = [];
       applyMatches(s);
       s.retryMs = Math.min((s.retryMs || 1000) * 2, 16000);
@@ -410,6 +412,7 @@ await LT.settingsReady;
     s.retryMs = 0;
 
     s.lastChecked = text;
+    s.language = resp.language || null;
     s.map = map;
     s.raw = (resp.matches || [])
       .filter(m => m.offset >= win.guard)
