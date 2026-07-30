@@ -13,6 +13,7 @@ const SYNC_DEFAULTS = {
   preferredVariants: [],
   motherTongue: '',
   level: 'default',
+  ignoreAccents: false,
   enabled: true,
   disabledSites: [],
   disabledRules: [],
@@ -235,6 +236,7 @@ function renderFields() {
 function renderToggles() {
   $('enabled').checked = settings.enabled;
   $('picky').checked = settings.level === 'picky';
+  $('accents').checked = settings.ignoreAccents;
   if (siteHost) {
     $('site-row').hidden = false;
     $('site-host').textContent = siteHost;
@@ -276,6 +278,10 @@ $('mother').addEventListener('change', () => {
 
 $('picky').addEventListener('change', () => {
   save('sync', { level: $('picky').checked ? 'picky' : 'default' });
+});
+
+$('accents').addEventListener('change', () => {
+  save('sync', { ignoreAccents: $('accents').checked });
 });
 
 $('enabled').addEventListener('change', () => {

@@ -420,6 +420,33 @@ await LT.settingsReady;
     applyMatches(s);
   }
 
+  // A word split into base letters plus whatever marks sit on each of them.
+  // The n-tilde is put back together first: ñ is a letter of its own in
+  // Spanish, not an accented n, so "ano"/"año" is never an accent difference.
+  const letters = (str) => [...str
+    .normalize('NFD')
+    .replace(/[nN]\u0303/g, m => m.normalize('NFC'))
+    .matchAll(/(\P{Diacritic})(\p{Diacritic}*)/gu)]
+    .map(([, base, marks]) => [base, marks]);
+
+  // True when `found` is `value` with accents missing — "ultimo" for "último".
+  // Only missing accents count: a misplaced one ("arból" for "árbol") is a
+  // real error, so every mark the written word does carry must be there in
+  // the suggestion too, on the same letter. Case is left alone as well —
+  // fixing it is a real change, not an accent.
+  function droppedAccents(found, value) {
+    const a = letters(found);
+    const b = letters(value);
+    if (a.length !== b.length) return false;
+    return a.every(([base, marks], i) =>
+      base === b[i][0] && (marks === '' || marks === b[i][1]));
+  }
+
+  // True when the match can be fixed by only putting accents back.
+  function accentOnly(m, found) {
+    return (m.replacements || []).some(r => r.value != null && droppedAccents(found, r.value));
+  }
+
   // Local filtering is instant (no server round-trip) when the user ignores
   // a word or disables a rule; the next real check also applies
   // disabledRules server-side.
@@ -427,10 +454,13 @@ await LT.settingsReady;
     const text = s.lastChecked ?? '';
     const disabled = new Set(LT.settings.disabledRules);
     const ignored = new Set(LT.settings.ignoredWords.map(w => w.toLowerCase()));
+    const skipAccents = LT.settings.ignoreAccents;
     s.matches = s.raw.filter(m => {
       if (m.offset < 0 || m.offset + m.length > text.length) return false;
       if (m.rule && disabled.has(m.rule.id)) return false;
-      return !ignored.has(text.slice(m.offset, m.offset + m.length).toLowerCase());
+      const found = text.slice(m.offset, m.offset + m.length);
+      if (ignored.has(found.toLowerCase())) return false;
+      return !(skipAccents && accentOnly(m, found));
     });
     const word = s.typing ? caretWord(s, text) : null;
     if (word) {

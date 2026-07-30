@@ -15,6 +15,7 @@ const SYNC_DEFAULTS = {
   preferredVariants: [], // only meaningful when language is 'auto'
   motherTongue: '',
   level: 'default',      // 'default' | 'picky'
+  ignoreAccents: false,  // skip matches whose fix only adds/removes accents
   enabled: true,
   disabledSites: [],     // hostnames
   disabledRules: [],

@@ -92,7 +92,9 @@ Click an underline to open the suggestion popup:
 
 The toolbar icon opens preferences: the global on/off switch, "Disable on
 *site*", server URL, language (or auto-detect), preferred variants, native
-language for false-friend detection, picky mode, and the lists of ignored
+language for false-friend detection, picky mode, "ignore accents" (skip a
+match when its fix only puts accents back, e.g. ultimo → último, while a
+misplaced accent like arból stays an error), and the lists of ignored
 words, auto-corrections, disabled rules and disabled fields — each removable.
 
 Preferences live in `storage.sync` and follow your browser profile. The

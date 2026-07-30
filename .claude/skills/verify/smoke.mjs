@@ -890,6 +890,37 @@ await step('level=picky surfaces extra rules', async () => {
   return `${before} → ${after} segments`;
 });
 
+await step('ignoreAccents skips fixes that only add an accent', async () => {
+  const prefs = await prefsPage();
+  await prefs.evaluate(() => chrome.storage.sync.set({
+    language: 'es', level: 'default', ignoreAccents: false,
+  }));
+  await sleep(300);
+  await page.bringToFront();
+  await page.click('#accents-ta');
+  // "ultimo" and "dia" only want an accent put back; "arból" carries one in
+  // the wrong place, which is a real error and must survive the option.
+  await page.type('#accents-ta', 'Es el ultimo dia del arból.');
+  const before = await settle('accents-ta');
+  if (before < 3) throw new Error(`expected the two accents + the misplaced one, got ${before}`);
+
+  await prefs.evaluate(() => chrome.storage.sync.set({ ignoreAccents: true }));
+  const after = await settle('accents-ta', 1200);
+  if (after !== 1) throw new Error(`expected only "arból" left, got ${after} segments`);
+
+  // Leave nothing behind: the Spanish text would be re-checked as English by
+  // the next step and paint underlines the rest of the run does not expect.
+  await page.evaluate(() => {
+    const ta = document.getElementById('accents-ta');
+    ta.value = '';
+    ta.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    ta.blur();
+  });
+  await prefs.evaluate(() => chrome.storage.sync.set({ language: 'en-US', ignoreAccents: false }));
+  await sleep(500);
+  return `${before} → ${after} segments, misspelling kept`;
+});
+
 await step('long text: tail window keeps match offsets aligned', async () => {
   const prefs = await prefsPage();
   await prefs.evaluate(() => chrome.storage.sync.set({ language: 'en-US', level: 'default' }));
@@ -915,6 +946,12 @@ await step('long text: tail window keeps match offsets aligned', async () => {
     });
   }, { timeout: 15000 });
   await sleep(400);
+  // clickSeg works in viewport coordinates, so the field has to be on screen
+  // wherever the previous steps left the page scrolled.
+  await page.evaluate(() => {
+    document.getElementById('long').scrollIntoView({ block: 'center' });
+  });
+  await sleep(300);
   await clickSeg({ id: 'long', index: 0 });
   await page.waitForSelector('.lt-ext-popup', { timeout: 3000 });
   const labels = await page.$$eval('.lt-ext-pop-item', els => els.map(e => e.textContent));
