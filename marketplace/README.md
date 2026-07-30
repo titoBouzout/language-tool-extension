@@ -10,6 +10,7 @@ Everything the three extension stores ask for, ready to paste and upload.
 | `edge-add-ons.md` | Edge: same package as Chrome, the fields that differ, certification notes. |
 | `firefox-amo.md` | Firefox: the Gecko build, the listing fields, and the reviewer notes AMO's code review needs. |
 | `screenshots/` | Six 1280×800 PNGs — the size Chrome and Edge require, and fine for AMO. |
+| `popup.png` | The popup alone, cropped tight and taken at 2x — not a store asset, it is the image the project README shows. |
 | `promo/` | Chrome small tile (440×280) and marquee (1400×560), Edge store logo (300×300). |
 | `demo.html`, `promo.html` | The staged pages the generator drives. Not part of the extension. |
 | `shots.mjs` | The generator. |

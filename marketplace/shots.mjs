@@ -176,6 +176,34 @@ await save('01-underlines-in-place', await capture());
   await page.keyboard.press('Escape');
 }
 
+// ------------------------------------------------------------------ close-up
+// The popup on its own, cropped tight, for the README. Taken at 2x so it stays
+// sharp when a project page scales it down, and before the preferences scene
+// pins a correction — a pinned "allmost" would disable the wand and correct
+// the word out of the text before it could be clicked.
+
+{
+  await page.setViewport({ width: W, height: H, deviceScaleFactor: 2 });
+  await stageScene('mail', MAIL);
+  const labels = await openPopupFor('almost');
+  log('popup close-up:', labels.join(' | '));
+  const clip = await page.evaluate(() => {
+    const r = document.querySelector('.lt-ext-popup').getBoundingClientRect();
+    const M = 24; // room for the drop shadow
+    const x = Math.max(0, r.left - M), y = Math.max(0, r.top - M);
+    return {
+      x, y,
+      width: Math.min(innerWidth, r.right + M) - x,
+      height: Math.min(innerHeight, r.bottom + M) - y,
+    };
+  });
+  fs.writeFileSync(path.join(here, 'popup.png'),
+    await page.screenshot({ clip, captureBeyondViewport: false }));
+  done.push('popup.png');
+  await page.keyboard.press('Escape');
+  await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 });
+}
+
 // ------------------------------------------------------------------------- 04
 // Picky mode on, so spelling (red), grammar (amber) and style (blue) are all
 // on screen at once, in a contenteditable editor — the highlight-API path.

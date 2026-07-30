@@ -11,6 +11,13 @@ message, its suggested replacements, and the rule behind it.
 Underlines are colour-coded: red for spelling, amber for grammar, blue for
 style and register.
 
+<img src="marketplace/popup.png" alt="The suggestion popup on a misspelled word: the rule behind the match, Ignore / Disable Rule / Disable Here, the replacements, and the detected language in the corner" width="420">
+
+The wand next to the top suggestion pins that correction: the same fix is then
+applied on its own every time the rule flags that word. The greyed code in the
+corner is the language the text was checked as — with the language set to
+`auto`, that is what LanguageTool detected.
+
 ## Requirements
 
 - Chrome 119 or newer, or Firefox 128 or newer. contenteditable support needs
