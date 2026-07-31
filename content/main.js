@@ -194,6 +194,15 @@ await LT.settingsReady;
     return WORD_CHAR.test(d[d.length - 1]) ? DEBOUNCE_MS : BOUNDARY_MS;
   }
 
+  // The selection an editable's caret lives in — the shadow root's own when
+  // the field is inside one, the document's otherwise.
+  function selectionFor(el) {
+    const rootNode = el.getRootNode();
+    return rootNode instanceof ShadowRoot && rootNode.getSelection
+      ? rootNode.getSelection()
+      : window.getSelection();
+  }
+
   // Offset of a collapsed caret in the text we check, or -1. A selection isn't
   // a caret and doesn't mark a word as in progress.
   function caretOffset(s) {
@@ -201,10 +210,7 @@ await LT.settingsReady;
       if (s.el.selectionStart == null || s.el.selectionStart !== s.el.selectionEnd) return -1;
       return s.el.selectionStart;
     }
-    const rootNode = s.el.getRootNode();
-    const sel = rootNode instanceof ShadowRoot && rootNode.getSelection
-      ? rootNode.getSelection()
-      : window.getSelection();
+    const sel = selectionFor(s.el);
     if (!sel?.isCollapsed || !sel.anchorNode || !s.el.contains(sel.anchorNode)) return -1;
     return LT.cePos(s.map || LT.ceBuildMap(s.el), sel.anchorNode, sel.anchorOffset);
   }
@@ -487,6 +493,50 @@ await LT.settingsReady;
   // nothing.
   const MAX_AUTO_RUNS = 8; // a pair of entries that undo each other must stop
 
+  // Where the caret is, when it sits clear of [from, to) — the span about to
+  // be replaced — so it can be put back afterwards. null when it is inside
+  // that span (the correction owns it then), when the field isn't focused, or
+  // when there is no reading it. In contenteditable only a collapsed caret is
+  // handled: a selection would need both ends mapped back through a DOM the
+  // edit has just rewritten, for a case that doesn't arise while typing.
+  function caretOutside(s, from, to) {
+    if (s.kind === 'field') {
+      if (document.activeElement !== s.el || s.el.selectionStart == null) return null;
+      const { selectionStart: start, selectionEnd: end } = s.el;
+      if (start < to && end > from) return null;
+      return { start, end, dir: s.el.selectionDirection };
+    }
+    const pos = caretOffset(s);
+    if (pos < 0 || (pos > from && pos < to)) return null;
+    return { start: pos, end: pos, dir: null };
+  }
+
+  // Puts a caret read by caretOutside back, shifted by the edit made since.
+  function restoreCaret(s, sel, delta) {
+    const start = sel.start + delta;
+    const end = sel.end + delta;
+    if (s.kind === 'field') {
+      try {
+        s.el.setSelectionRange(start, end, sel.dir || undefined);
+      } catch { /* element type without a text selection */ }
+      return;
+    }
+    // The edit went through the DOM this map was built from, so rebuild it —
+    // ceRangeFor resolves offsets against nodes, not text.
+    LT.ceInvalidateMap();
+    const map = LT.ceBuildMap(s.el);
+    const range = start <= map.text.length && end <= map.text.length
+      ? LT.ceRangeFor(map, start, end) : null;
+    const selection = range && selectionFor(s.el);
+    if (!selection) return;
+    s.map = map;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    // Same reason applyReplacement announces its own selection change: editors
+    // that keep their own model sync it here, not on the browser's async one.
+    document.dispatchEvent(new Event('selectionchange'));
+  }
+
   // retry: allow one more pass when this one finds the state moved. Bounded on
   // purpose — a page churning the field faster than the timer fires must not
   // keep it going.
@@ -515,22 +565,16 @@ await LT.settingsReady;
       // The user may be editing somewhere else entirely in the same field;
       // applyReplacement selects the flagged span to edit it, which leaves the
       // caret at the end of the correction. Put it back where it was, shifted
-      // by the edit when it sat after the span. Only fields expose a caret we
-      // can restore this simply; in contenteditable the caret follows the
-      // correction.
+      // by the edit when it sat after the span. Typing the space that ends the
+      // misspelled word is exactly that case — leaving the caret where the
+      // correction ended puts it before the space, and the next word is typed
+      // straight onto the word just fixed.
       const end = match.offset + match.length;
-      const sel = s.kind === 'field' && document.activeElement === s.el &&
-        s.el.selectionStart != null &&
-        (s.el.selectionStart >= end || s.el.selectionEnd <= match.offset)
-        ? { start: s.el.selectionStart, end: s.el.selectionEnd, dir: s.el.selectionDirection }
-        : null;
+      const sel = caretOutside(s, match.offset, end);
       // Declined as stale: no edit was made, so there is no caret to put back
       // and moving it would be a jump out of nowhere.
       if (!LT.applyReplacement(s, match, value) || !sel) return;
-      const delta = sel.start >= end ? value.length - match.length : 0;
-      try {
-        s.el.setSelectionRange(sel.start + delta, sel.end + delta, sel.dir || undefined);
-      } catch { /* element type without a text selection */ }
+      restoreCaret(s, sel, sel.start >= end ? value.length - match.length : 0);
     }, 0);
   }
 

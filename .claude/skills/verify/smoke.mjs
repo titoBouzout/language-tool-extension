@@ -1086,6 +1086,35 @@ await step('auto: a correction behind the caret leaves the caret where it was', 
   return 'corrected ahead of the caret, caret still at 0';
 });
 
+// Typing the space that ends a misspelled word is the ordinary way a pinned
+// correction fires. Leaving the caret where the correction ended puts it in
+// front of that space, and the next word is then typed onto the word just
+// fixed ("A test" + "cat" -> "A testcat "). Fields restore the caret from an
+// offset; contenteditable has to map it back through the rewritten DOM.
+await step('auto: correcting on the space keeps the caret after it (contenteditable)', async () => {
+  const prefs = await prefsPage();
+  await prefs.evaluate(() => chrome.storage.sync.set({
+    autoCorrections: [{ rule: 'MORFOLOGIK_RULE_EN_US', sub: '', from: 'testt', to: 'test' }],
+  }));
+  await sleep(300);
+  await page.bringToFront();
+  await page.click('#auto-ce');
+  // The trailing space a browser puts in a contenteditable is an nbsp.
+  const textOf = () => page.$eval('#auto-ce', el => el.innerText.replace(/ /g, ' '));
+  await page.type('#auto-ce', 'A testt ');
+  await page.waitForFunction(
+    () => document.getElementById('auto-ce').innerText.startsWith('A test'), { timeout: 8000 });
+  await sleep(500);
+  const corrected = await textOf();
+  if (!corrected.startsWith('A test ')) throw new Error(`lost the space: ${JSON.stringify(corrected)}`);
+  await page.type('#auto-ce', 'cat');
+  await sleep(300);
+  const t = await textOf();
+  if (!t.startsWith('A test cat')) throw new Error(JSON.stringify(t));
+  await prefs.evaluate(() => chrome.storage.sync.set({ autoCorrections: [] }));
+  return 'next word typed after the space, not onto the correction';
+});
+
 // Two entries that undo each other. The budget in autoCorrectSoon is the only
 // thing between this and an endless correct/recheck loop.
 await step('auto: entries that undo each other settle instead of looping', async () => {
